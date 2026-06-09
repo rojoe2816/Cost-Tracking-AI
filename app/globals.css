@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    --font-heading: "Gill Sans", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+    --background: 36 33% 97%;
+    --foreground: 224 34% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 34% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 34% 14%;
+    --primary: 196 71% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 34 37% 92%;
+    --secondary-foreground: 224 34% 14%;
+    --muted: 32 28% 92%;
+    --muted-foreground: 221 19% 37%;
+    --accent: 32 85% 90%;
+    --accent-foreground: 224 34% 14%;
+    --destructive: 0 76% 57%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 23% 84%;
+    --input: 30 23% 84%;
+    --ring: 196 71% 32%;
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.09), transparent 28%),
+      radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 24%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 252, 247, 0.98));
+  }
+}
+
+@layer components {
+  .surface-panel {
+    @apply rounded-3xl border border-border/70 bg-white/80 shadow-panel backdrop-blur;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: var(--font-heading), sans-serif;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
