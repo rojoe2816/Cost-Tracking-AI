@@ -7,12 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AgencyPlan {
-  STARTER
-  GROWTH
-  ENTERPRISE
-}
-
 enum MembershipRole {
   OWNER
   ADMIN
@@ -21,199 +15,239 @@ enum MembershipRole {
 
 enum ClientStatus {
   ACTIVE
-  PAUSED
   ARCHIVED
 }
 
-enum WorkflowStatus {
-  DRAFT
-  LIVE
-  PAUSED
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
 }
 
-enum UsageSource {
-  WEB
-  API
-  WORKFLOW
+enum PromptStorageMode {
+  METADATA_ONLY
+  REDACTED
+  FULL_LOGGING
+}
+
+enum AiRequestSource {
   SLACK
+  WEB
 }
 
-enum CurrencyCode {
-  USD
+enum AiRequestStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
-model Agency {
-  id              String             @id @default(cuid())
+model Organization {
+  id                   String                       @id @default(cuid())
+  name                 String
+  slug                 String                       @unique
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  memberships          Membership[]
+  clients              Client[]
+  projects             Project[]
+  workflowTypes        WorkflowType[]
+  slackWorkspaces      SlackWorkspace[]
+  slackChannelMappings SlackChannelMapping[]
+  clientRevenues       ClientRevenue[]
+  privacySettings      OrganizationPrivacySettings?
+  aiRequestAudits      AiRequestAudit[]
+
+  @@index([createdAt])
+}
+
+model AppUser {
+  id              String           @id @default(cuid())
+  email           String           @unique
   name            String
-  slug            String             @unique
-  plan            AgencyPlan         @default(STARTER)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  memberships     AgencyMembership[]
-  clients         Client[]
-  projects        Project[]
-  workflows       Workflow[]
-  slackWorkspaces SlackWorkspace[]
-  slackChannels   SlackChannel[]
-  usageEvents     UsageEvent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  memberships     Membership[]
+  aiRequestAudits AiRequestAudit[]
+
+  @@index([createdAt])
 }
 
-model User {
-  id          String             @id @default(cuid())
-  email       String             @unique
-  name        String?
-  imageUrl    String?
-  timezone    String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships AgencyMembership[]
-  usageEvents UsageEvent[]
-}
+model Membership {
+  id             String         @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole @default(MEMBER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           AppUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-model AgencyMembership {
-  id        String         @id @default(cuid())
-  agencyId  String
-  userId    String
-  role      MembershipRole @default(MEMBER)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  agency    Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([agencyId, userId])
+  @@unique([organizationId, userId])
+  @@index([organizationId])
   @@index([userId])
+  @@index([createdAt])
 }
 
 model Client {
-  id              String        @id @default(cuid())
-  agencyId        String
-  name            String
-  slug            String
-  status          ClientStatus  @default(ACTIVE)
-  billingCurrency CurrencyCode  @default(USD)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  agency          Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  projects        Project[]
-  usageEvents     UsageEvent[]
+  id                   String                @id @default(cuid())
+  organizationId       String
+  name                 String
+  externalAccountingId String?
+  status               ClientStatus          @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects             Project[]
+  slackChannelMappings SlackChannelMapping[]
+  clientRevenues       ClientRevenue[]
+  aiRequestAudits      AiRequestAudit[]
 
-  @@unique([agencyId, slug])
-  @@index([agencyId, status])
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Project {
-  id             String         @id @default(cuid())
-  agencyId       String
-  clientId       String
-  name           String
-  slug           String
-  description    String?
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  agency         Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client         Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  workflows      Workflow[]
-  slackChannels  SlackChannel[]
-  usageEvents    UsageEvent[]
+  id                   String                @id @default(cuid())
+  organizationId       String
+  clientId             String
+  name                 String
+  status               ProjectStatus         @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client               Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  slackChannelMappings SlackChannelMapping[]
+  clientRevenues       ClientRevenue[]
+  aiRequestAudits      AiRequestAudit[]
 
-  @@unique([agencyId, slug])
-  @@index([clientId, isActive])
+  @@unique([organizationId, clientId, name])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
 }
 
-model Workflow {
-  id            String         @id @default(cuid())
-  agencyId      String
-  projectId     String
-  name          String
-  slug          String
-  provider      String?
-  model         String?
-  status        WorkflowStatus @default(DRAFT)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  agency        Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  slackChannels SlackChannel[]
-  usageEvents   UsageEvent[]
+model WorkflowType {
+  id                   String                @id @default(cuid())
+  organizationId       String
+  name                 String
+  slug                 String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slackChannelMappings SlackChannelMapping[]
+  aiRequestAudits      AiRequestAudit[]
 
-  @@unique([agencyId, slug])
-  @@index([projectId, status])
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([createdAt])
 }
 
 model SlackWorkspace {
-  id          String         @id @default(cuid())
-  agencyId    String
-  teamId      String         @unique
-  name        String
-  domain      String?
-  installedAt DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  agency      Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  channels    SlackChannel[]
+  id              String                @id @default(cuid())
+  organizationId  String
+  slackTeamId     String                @unique
+  slackTeamName   String?
+  botUserId       String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channelMappings SlackChannelMapping[]
 
-  @@index([agencyId])
+  @@index([organizationId])
+  @@index([createdAt])
 }
 
-model SlackChannel {
-  id               String         @id @default(cuid())
-  agencyId         String
-  workspaceId      String
-  projectId        String?
-  workflowId       String?
-  slackChannelId   String
-  name             String
-  isArchived       Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  agency           Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  workspace        SlackWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project          Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  workflow         Workflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
-  usageEvents      UsageEvent[]
+model SlackChannelMapping {
+  id                    String         @id @default(cuid())
+  organizationId        String
+  slackWorkspaceId      String
+  slackChannelId        String
+  slackChannelName      String?
+  clientId              String?
+  projectId             String?
+  defaultWorkflowTypeId String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  organization          Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  slackWorkspace        SlackWorkspace @relation(fields: [slackWorkspaceId], references: [id], onDelete: Cascade)
+  client                Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project               Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  defaultWorkflowType   WorkflowType?  @relation(fields: [defaultWorkflowTypeId], references: [id], onDelete: SetNull)
 
-  @@unique([workspaceId, slackChannelId])
-  @@index([agencyId, isArchived])
+  @@unique([slackWorkspaceId, slackChannelId])
+  @@index([organizationId])
+  @@index([clientId])
   @@index([projectId])
-  @@index([workflowId])
+  @@index([createdAt])
 }
 
-model UsageEvent {
-  id               String        @id @default(cuid())
-  agencyId         String
-  clientId         String?
-  projectId        String?
-  workflowId       String?
-  userId           String?
-  slackChannelId   String?
-  requestId        String?       @unique
-  source           UsageSource
-  provider         String
-  model            String
-  promptTokens     Int           @default(0)
-  completionTokens Int           @default(0)
-  cacheReadTokens  Int           @default(0)
-  cacheWriteTokens Int           @default(0)
-  totalTokens      Int           @default(0)
-  inputCost        Decimal       @db.Decimal(18, 6)
-  outputCost       Decimal       @db.Decimal(18, 6)
-  totalCost        Decimal       @db.Decimal(18, 6)
-  currency         CurrencyCode  @default(USD)
-  occurredAt       DateTime
-  metadata         Json?
-  createdAt        DateTime      @default(now())
-  agency           Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  client           Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  project          Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  workflow         Workflow?     @relation(fields: [workflowId], references: [id], onDelete: SetNull)
-  user             User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  slackChannel     SlackChannel? @relation(fields: [slackChannelId], references: [id], onDelete: SetNull)
+model ClientRevenue {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  clientId              String
+  projectId             String?
+  month                 String
+  revenueUsd            Decimal      @db.Decimal(18, 2)
+  estimatedLaborCostUsd Decimal?     @db.Decimal(18, 2)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client                Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project               Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  @@index([agencyId, occurredAt])
-  @@index([clientId, occurredAt])
-  @@index([projectId, occurredAt])
-  @@index([workflowId, occurredAt])
-  @@index([userId, occurredAt])
-  @@index([slackChannelId, occurredAt])
+  @@unique([clientId, projectId, month])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([month])
+  @@index([createdAt])
+}
+
+model OrganizationPrivacySettings {
+  id                String            @id @default(cuid())
+  organizationId    String            @unique
+  promptStorageMode PromptStorageMode @default(METADATA_ONLY)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+model AiRequestAudit {
+  id                       String          @id @default(cuid())
+  organizationId           String
+  userId                   String?
+  source                   AiRequestSource
+  status                   AiRequestStatus
+  externalLiteLlmRequestId String?
+  slackTeamId              String?
+  slackChannelId           String?
+  slackThreadTs            String?
+  slackMessageTs           String?
+  clientId                 String?
+  projectId                String?
+  workflowTypeId           String?
+  promptStored             Boolean         @default(false)
+  errorMessage             String?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                     AppUser?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([workflowTypeId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([externalLiteLlmRequestId])
+  @@index([slackTeamId, slackChannelId])
 }
