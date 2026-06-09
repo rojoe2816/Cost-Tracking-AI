@@ -1,12 +1,11 @@
 import type { Route } from "next";
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   Building2,
   Hash,
   Layers3,
   LayoutDashboard,
-  Users,
+  ShieldCheck,
 } from "lucide-react";
 
 export interface DashboardNavItem {
@@ -19,44 +18,32 @@ export interface DashboardNavItem {
 export const dashboardNavigation: DashboardNavItem[] = [
   {
     href: "/dashboard",
-    label: "Overview",
-    description: "Spend and readiness summary",
+    label: "Dashboard",
+    description: "Agency overview and placeholders",
     icon: LayoutDashboard,
   },
   {
-    href: "/dashboard/usage",
-    label: "Usage",
-    description: "Event-level AI ledger",
-    icon: Activity,
-  },
-  {
-    href: "/dashboard/clients",
+    href: "/clients",
     label: "Clients",
-    description: "Agency-to-client rollups",
+    description: "Seeded clients and project scope",
     icon: Building2,
   },
   {
-    href: "/dashboard/projects",
+    href: "/projects",
     label: "Projects",
-    description: "Project costing views",
+    description: "Project shell and mapping readiness",
     icon: Layers3,
   },
   {
-    href: "/dashboard/workflows",
-    label: "Workflows",
-    description: "Automation cost attribution",
-    icon: Layers3,
-  },
-  {
-    href: "/dashboard/channels",
-    label: "Slack channels",
-    description: "Channel-level usage context",
+    href: "/slack",
+    label: "Slack",
+    description: "Channel mapping and install status",
     icon: Hash,
   },
   {
-    href: "/dashboard/people",
-    label: "People",
-    description: "User and membership tracking",
-    icon: Users,
+    href: "/settings/privacy",
+    label: "Privacy",
+    description: "Prompt storage defaults",
+    icon: ShieldCheck,
   },
 ];

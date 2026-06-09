@@ -18,8 +18,8 @@ export interface EntityTableColumn<T> {
 }
 
 interface EntityTableProps<T> {
-  rows: T[];
-  columns: EntityTableColumn<T>[];
+  rows: readonly T[];
+  columns: readonly EntityTableColumn<T>[];
   getRowKey: (row: T) => string;
 }
 

@@ -1,51 +1,51 @@
-import { Layers3, MessagesSquare, ReceiptText, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  Building2,
+  Hash,
+  Layers3,
+  MessagesSquare,
+  ReceiptText,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { UsageTable } from "@/components/dashboard/usage-table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatUsdCompact, sumUsd } from "@/lib/db";
-import { shellChannels, shellUsageRecords, shellUsers, shellWorkflows } from "@/lib/shell-data";
+import { demoAgency, demoAgencyCounts } from "@/lib/demo-agency";
 
 export default function DashboardOverviewPage() {
-  const totalSpend = sumUsd(shellUsageRecords.map((record) => record.totalCost));
-  const totalRequests = shellUsageRecords.length;
-  const totalUsers = shellUsers.length;
-  const totalWorkflows = shellWorkflows.length;
-
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Overview"
-        title="Agency-wide AI cost operations"
-        description="The dashboard shell is laid out for multi-dimensional usage attribution once live ingestion is connected."
+        eyebrow="Dashboard"
+        title="Demo Agency AI operations"
+        description="This shell gives the team a clean starting point for agency-level AI job costing. The high-level KPI cards stay as placeholders until spend sync, request attribution, and Slack channel mapping are wired to live integrations."
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          title="Tracked spend"
-          value={formatUsdCompact(totalSpend)}
-          description="Across the latest shell events"
+          title="Total AI spend this month"
+          value="$ --"
+          description="Placeholder until LiteLLM spend sync is connected."
           icon={ReceiptText}
         />
         <StatCard
-          title="Usage events"
-          value={Intl.NumberFormat("en-US").format(totalRequests)}
-          description="Ready to roll up by agency, client, project, or channel"
+          title="Attributed AI requests"
+          value="--"
+          description="Placeholder until app-level request attribution is live."
           icon={MessagesSquare}
         />
         <StatCard
-          title="Active workflows"
-          value={Intl.NumberFormat("en-US").format(totalWorkflows)}
-          description="Mapped to project and provider metadata"
-          icon={Layers3}
+          title="Unmapped Slack channels"
+          value="--"
+          description="Placeholder until Slack workspace installation is enabled."
+          icon={Hash}
         />
         <StatCard
-          title="Tracked people"
-          value={Intl.NumberFormat("en-US").format(totalUsers)}
-          description="Prepared for membership-aware access control"
-          icon={Users}
+          title="Clients at pricing risk"
+          value="--"
+          description="Placeholder until revenue and margin monitoring are connected."
+          icon={AlertTriangle}
         />
       </section>
 
@@ -53,46 +53,86 @@ export default function DashboardOverviewPage() {
         <Card className="surface-panel border-0">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="font-heading text-2xl">Recent usage</CardTitle>
+              <CardTitle className="font-heading text-2xl">
+                Demo Agency footprint
+              </CardTitle>
               <p className="mt-2 text-sm text-muted-foreground">
-                Example events showing how attribution flows across the schema.
+                Seeded foundation data available in the local shell right now.
               </p>
             </div>
             <Badge variant="secondary" className="rounded-full">
-              Shell data
+              Seeded data
             </Badge>
           </CardHeader>
-          <CardContent>
-            <UsageTable rows={shellUsageRecords} />
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-3xl bg-secondary/70 p-5">
+              <div className="flex items-center gap-3 text-foreground">
+                <Building2 className="h-5 w-5 text-primary" />
+                <p className="font-medium">Clients</p>
+              </div>
+              <p className="mt-4 font-heading text-4xl font-semibold">
+                {demoAgencyCounts.clients}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Demo client accounts seeded for local walkthroughs.
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-secondary/70 p-5">
+              <div className="flex items-center gap-3 text-foreground">
+                <Layers3 className="h-5 w-5 text-primary" />
+                <p className="font-medium">Projects</p>
+              </div>
+              <p className="mt-4 font-heading text-4xl font-semibold">
+                {demoAgencyCounts.projects}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Projects are already grouped under clients for attribution.
+              </p>
+            </div>
+
+            <div className="rounded-3xl bg-secondary/70 p-5">
+              <div className="flex items-center gap-3 text-foreground">
+                <MessagesSquare className="h-5 w-5 text-primary" />
+                <p className="font-medium">Workflow types</p>
+              </div>
+              <p className="mt-4 font-heading text-4xl font-semibold">
+                {demoAgencyCounts.workflowTypes}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Workflow labels are ready to map onto real AI requests later.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="surface-panel border-0">
           <CardHeader>
             <CardTitle className="font-heading text-2xl">
-              Capture readiness
+              Current milestone
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="rounded-2xl bg-secondary/70 p-4">
-              <p className="font-medium text-foreground">Slack-linked channels</p>
+              <p className="font-medium text-foreground">Organization context</p>
               <p className="mt-2 text-muted-foreground">
-                {shellChannels.length} channels are modeled for origin-level cost
-                attribution and client communication analysis.
+                The app assumes <span className="font-medium text-foreground">{demoAgency.name}</span> for
+                this local shell and keeps auth out of the path for now.
               </p>
             </div>
             <div className="rounded-2xl bg-secondary/70 p-4">
-              <p className="font-medium text-foreground">Provider abstraction</p>
+              <p className="font-medium text-foreground">Prompt privacy baseline</p>
               <p className="mt-2 text-muted-foreground">
-                LiteLLM credentials and model metadata are isolated in dedicated
-                integration modules for future ingestion jobs.
+                Prompt storage defaults to <span className="font-medium text-foreground">metadata-only</span>,
+                so raw prompt and response text are not stored by default.
               </p>
             </div>
             <div className="rounded-2xl bg-secondary/70 p-4">
-              <p className="font-medium text-foreground">Security baseline</p>
+              <p className="font-medium text-foreground">Next integrations</p>
               <p className="mt-2 text-muted-foreground">
-                Middleware applies secure defaults now, before auth and external
-                webhooks are added.
+                Live spend rollups, Slack installs, and provider-backed request
+                traces will plug into this shell after the current foundation
+                milestone.
               </p>
             </div>
           </CardContent>

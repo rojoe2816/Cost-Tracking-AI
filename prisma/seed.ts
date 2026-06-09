@@ -1,49 +1,29 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+
+import { demoAgency, slugify } from "../lib/demo-agency";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const organization = await prisma.organization.upsert({
-    where: { slug: "lighthouse-studio" },
+    where: { slug: demoAgency.slug },
     update: {
-      name: "Lighthouse Studio",
+      name: demoAgency.name,
     },
     create: {
-      name: "Lighthouse Studio",
-      slug: "lighthouse-studio",
+      name: demoAgency.name,
+      slug: demoAgency.slug,
     },
   });
 
-  const ava = await prisma.appUser.upsert({
-    where: { email: "ava@lighthouse.studio" },
+  const owner = await prisma.appUser.upsert({
+    where: { email: demoAgency.owner.email },
     update: {
-      name: "Ava Patel",
+      name: demoAgency.owner.name,
     },
     create: {
-      email: "ava@lighthouse.studio",
-      name: "Ava Patel",
-    },
-  });
-
-  const noah = await prisma.appUser.upsert({
-    where: { email: "noah@lighthouse.studio" },
-    update: {
-      name: "Noah Kim",
-    },
-    create: {
-      email: "noah@lighthouse.studio",
-      name: "Noah Kim",
-    },
-  });
-
-  const milo = await prisma.appUser.upsert({
-    where: { email: "milo@lighthouse.studio" },
-    update: {
-      name: "Milo Chen",
-    },
-    create: {
-      email: "milo@lighthouse.studio",
-      name: "Milo Chen",
+      email: demoAgency.owner.email,
+      name: demoAgency.owner.name,
     },
   });
 
@@ -51,347 +31,94 @@ async function main() {
     where: {
       organizationId_userId: {
         organizationId: organization.id,
-        userId: ava.id,
+        userId: owner.id,
       },
     },
     update: {
-      role: "OWNER",
+      role: demoAgency.owner.role,
     },
     create: {
       organizationId: organization.id,
-      userId: ava.id,
-      role: "OWNER",
+      userId: owner.id,
+      role: demoAgency.owner.role,
     },
   });
 
-  await prisma.membership.upsert({
-    where: {
-      organizationId_userId: {
+  for (const client of demoAgency.clients) {
+    const persistedClient = await prisma.client.upsert({
+      where: {
+        organizationId_name: {
+          organizationId: organization.id,
+          name: client.name,
+        },
+      },
+      update: {
+        externalAccountingId: client.externalAccountingId,
+        status: client.status,
+      },
+      create: {
         organizationId: organization.id,
-        userId: noah.id,
+        name: client.name,
+        externalAccountingId: client.externalAccountingId,
+        status: client.status,
       },
-    },
-    update: {
-      role: "ADMIN",
-    },
-    create: {
-      organizationId: organization.id,
-      userId: noah.id,
-      role: "ADMIN",
-    },
-  });
+    });
 
-  await prisma.membership.upsert({
-    where: {
-      organizationId_userId: {
-        organizationId: organization.id,
-        userId: milo.id,
-      },
-    },
-    update: {
-      role: "MEMBER",
-    },
-    create: {
-      organizationId: organization.id,
-      userId: milo.id,
-      role: "MEMBER",
-    },
-  });
+    for (const project of client.projects) {
+      await prisma.project.upsert({
+        where: {
+          organizationId_clientId_name: {
+            organizationId: organization.id,
+            clientId: persistedClient.id,
+            name: project.name,
+          },
+        },
+        update: {
+          status: project.status,
+        },
+        create: {
+          organizationId: organization.id,
+          clientId: persistedClient.id,
+          name: project.name,
+          status: project.status,
+        },
+      });
+    }
+  }
 
-  const northstar = await prisma.client.upsert({
-    where: {
-      organizationId_name: {
-        organizationId: organization.id,
-        name: "Northstar Travel",
-      },
-    },
-    update: {
-      externalAccountingId: "qb-northstar-001",
-      status: "ACTIVE",
-    },
-    create: {
-      organizationId: organization.id,
-      name: "Northstar Travel",
-      externalAccountingId: "qb-northstar-001",
-      status: "ACTIVE",
-    },
-  });
-
-  const sparrow = await prisma.client.upsert({
-    where: {
-      organizationId_name: {
-        organizationId: organization.id,
-        name: "Sparrow Health",
-      },
-    },
-    update: {
-      externalAccountingId: "xero-sparrow-009",
-      status: "ACTIVE",
-    },
-    create: {
-      organizationId: organization.id,
-      name: "Sparrow Health",
-      externalAccountingId: "xero-sparrow-009",
-      status: "ACTIVE",
-    },
-  });
-
-  const opsCopilot = await prisma.project.upsert({
-    where: {
-      organizationId_clientId_name: {
-        organizationId: organization.id,
-        clientId: northstar.id,
-        name: "Ops Copilot",
-      },
-    },
-    update: {
-      status: "ACTIVE",
-    },
-    create: {
-      organizationId: organization.id,
-      clientId: northstar.id,
-      name: "Ops Copilot",
-      status: "ACTIVE",
-    },
-  });
-
-  const contentQa = await prisma.project.upsert({
-    where: {
-      organizationId_clientId_name: {
-        organizationId: organization.id,
-        clientId: sparrow.id,
-        name: "Content QA",
-      },
-    },
-    update: {
-      status: "ACTIVE",
-    },
-    create: {
-      organizationId: organization.id,
-      clientId: sparrow.id,
-      name: "Content QA",
-      status: "ACTIVE",
-    },
-  });
-
-  const dailyBrief = await prisma.workflowType.upsert({
-    where: {
-      organizationId_slug: {
-        organizationId: organization.id,
-        slug: "daily-brief-generator",
-      },
-    },
-    update: {
-      name: "Daily brief generator",
-    },
-    create: {
-      organizationId: organization.id,
-      name: "Daily brief generator",
-      slug: "daily-brief-generator",
-    },
-  });
-
-  const complianceRewrite = await prisma.workflowType.upsert({
-    where: {
-      organizationId_slug: {
-        organizationId: organization.id,
-        slug: "compliance-rewrite",
-      },
-    },
-    update: {
-      name: "Compliance rewrite",
-    },
-    create: {
-      organizationId: organization.id,
-      name: "Compliance rewrite",
-      slug: "compliance-rewrite",
-    },
-  });
-
-  const slackWorkspace = await prisma.slackWorkspace.upsert({
-    where: {
-      slackTeamId: "T_LIGHTHOUSE",
-    },
-    update: {
-      organizationId: organization.id,
-      slackTeamName: "Lighthouse Studio",
-      botUserId: "B_LIGHTHOUSE",
-    },
-    create: {
-      organizationId: organization.id,
-      slackTeamId: "T_LIGHTHOUSE",
-      slackTeamName: "Lighthouse Studio",
-      botUserId: "B_LIGHTHOUSE",
-    },
-  });
-
-  await prisma.slackChannelMapping.upsert({
-    where: {
-      slackWorkspaceId_slackChannelId: {
-        slackWorkspaceId: slackWorkspace.id,
-        slackChannelId: "C_NORTHSTAR_OPS",
-      },
-    },
-    update: {
-      organizationId: organization.id,
-      slackChannelName: "#northstar-ops",
-      clientId: northstar.id,
-      projectId: opsCopilot.id,
-      defaultWorkflowTypeId: dailyBrief.id,
-    },
-    create: {
-      organizationId: organization.id,
-      slackWorkspaceId: slackWorkspace.id,
-      slackChannelId: "C_NORTHSTAR_OPS",
-      slackChannelName: "#northstar-ops",
-      clientId: northstar.id,
-      projectId: opsCopilot.id,
-      defaultWorkflowTypeId: dailyBrief.id,
-    },
-  });
-
-  await prisma.slackChannelMapping.upsert({
-    where: {
-      slackWorkspaceId_slackChannelId: {
-        slackWorkspaceId: slackWorkspace.id,
-        slackChannelId: "C_SPARROW_CONTENT",
-      },
-    },
-    update: {
-      organizationId: organization.id,
-      slackChannelName: "#sparrow-content",
-      clientId: sparrow.id,
-      projectId: contentQa.id,
-      defaultWorkflowTypeId: complianceRewrite.id,
-    },
-    create: {
-      organizationId: organization.id,
-      slackWorkspaceId: slackWorkspace.id,
-      slackChannelId: "C_SPARROW_CONTENT",
-      slackChannelName: "#sparrow-content",
-      clientId: sparrow.id,
-      projectId: contentQa.id,
-      defaultWorkflowTypeId: complianceRewrite.id,
-    },
-  });
-
-  await prisma.clientRevenue.upsert({
-    where: {
-      clientId_projectId_month: {
-        clientId: northstar.id,
-        projectId: opsCopilot.id,
-        month: "2026-06",
-      },
-    },
-    update: {
-      revenueUsd: new Prisma.Decimal("18500.00"),
-      estimatedLaborCostUsd: new Prisma.Decimal("6200.00"),
-    },
-    create: {
-      organizationId: organization.id,
-      clientId: northstar.id,
-      projectId: opsCopilot.id,
-      month: "2026-06",
-      revenueUsd: new Prisma.Decimal("18500.00"),
-      estimatedLaborCostUsd: new Prisma.Decimal("6200.00"),
-    },
-  });
-
-  await prisma.clientRevenue.upsert({
-    where: {
-      clientId_projectId_month: {
-        clientId: sparrow.id,
-        projectId: contentQa.id,
-        month: "2026-06",
-      },
-    },
-    update: {
-      revenueUsd: new Prisma.Decimal("12400.00"),
-      estimatedLaborCostUsd: new Prisma.Decimal("5100.00"),
-    },
-    create: {
-      organizationId: organization.id,
-      clientId: sparrow.id,
-      projectId: contentQa.id,
-      month: "2026-06",
-      revenueUsd: new Prisma.Decimal("12400.00"),
-      estimatedLaborCostUsd: new Prisma.Decimal("5100.00"),
-    },
-  });
+  await Promise.all(
+    demoAgency.workflowTypes.map((name) =>
+      prisma.workflowType.upsert({
+        where: {
+          organizationId_slug: {
+            organizationId: organization.id,
+            slug: slugify(name),
+          },
+        },
+        update: {
+          name,
+        },
+        create: {
+          organizationId: organization.id,
+          name,
+          slug: slugify(name),
+        },
+      }),
+    ),
+  );
 
   await prisma.organizationPrivacySettings.upsert({
     where: {
       organizationId: organization.id,
     },
     update: {
-      promptStorageMode: "METADATA_ONLY",
+      promptStorageMode: demoAgency.privacy.promptStorageMode,
     },
     create: {
       organizationId: organization.id,
-      promptStorageMode: "METADATA_ONLY",
+      promptStorageMode: demoAgency.privacy.promptStorageMode,
     },
   });
-
-  const auditRecords = [
-    {
-      organizationId: organization.id,
-      userId: ava.id,
-      source: "SLACK" as const,
-      status: "COMPLETED" as const,
-      externalLiteLlmRequestId: "litellm_req_01",
-      slackTeamId: "T_LIGHTHOUSE",
-      slackChannelId: "C_NORTHSTAR_OPS",
-      slackThreadTs: "1717891200.000100",
-      slackMessageTs: "1717891200.000200",
-      clientId: northstar.id,
-      projectId: opsCopilot.id,
-      workflowTypeId: dailyBrief.id,
-      promptStored: false,
-      errorMessage: null,
-    },
-    {
-      organizationId: organization.id,
-      userId: noah.id,
-      source: "WEB" as const,
-      status: "FAILED" as const,
-      externalLiteLlmRequestId: "litellm_req_02",
-      slackTeamId: null,
-      slackChannelId: null,
-      slackThreadTs: null,
-      slackMessageTs: null,
-      clientId: sparrow.id,
-      projectId: contentQa.id,
-      workflowTypeId: complianceRewrite.id,
-      promptStored: false,
-      errorMessage: "Anthropic provider timeout during content QA rewrite.",
-    },
-  ];
-
-  for (const auditRecord of auditRecords) {
-    const existingAudit = await prisma.aiRequestAudit.findFirst({
-      where: {
-        organizationId: auditRecord.organizationId,
-        externalLiteLlmRequestId: auditRecord.externalLiteLlmRequestId,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (existingAudit) {
-      await prisma.aiRequestAudit.update({
-        where: {
-          id: existingAudit.id,
-        },
-        data: auditRecord,
-      });
-      continue;
-    }
-
-    await prisma.aiRequestAudit.create({
-      data: auditRecord,
-    });
-  }
 }
 
 main()
