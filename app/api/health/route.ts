@@ -15,8 +15,8 @@ export async function GET() {
     services: {
       auth: authStatus.enabled ? "enabled" : "deferred",
       database: env.DATABASE_URL ? "configured" : "missing",
-      litellm: getLiteLLMRuntimeConfig().enabled ? "configured" : "missing",
-      slack: getSlackRuntimeConfig().enabled ? "configured" : "missing",
+      litellm: getLiteLLMRuntimeConfig().status,
+      slack: getSlackRuntimeConfig().status,
     },
   });
 }

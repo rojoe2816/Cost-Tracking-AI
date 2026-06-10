@@ -22,10 +22,17 @@ export const envSchema = z.object({
     32,
     "ENCRYPTION_KEY must be at least 32 characters long",
   ),
-  LITELLM_MASTER_KEY: requiredString("LITELLM_MASTER_KEY"),
-  LITELLM_PROXY_URL: z.string().url("LITELLM_PROXY_URL must be a valid URL"),
-  SLACK_BOT_TOKEN: requiredString("SLACK_BOT_TOKEN"),
-  SLACK_SIGNING_SECRET: requiredString("SLACK_SIGNING_SECRET"),
+  // Integration credentials are optional at boot so the app can start
+  // without Slack/LiteLLM configured. Routes and jobs that actually need an
+  // integration must call assertLiteLLMConfigured()/assertSlackConfigured()
+  // (see lib/litellm/client.ts and lib/slack/client.ts).
+  LITELLM_MASTER_KEY: z.string().trim().min(1).optional(),
+  LITELLM_PROXY_URL: z
+    .string()
+    .url("LITELLM_PROXY_URL must be a valid URL")
+    .optional(),
+  SLACK_BOT_TOKEN: z.string().trim().min(1).optional(),
+  SLACK_SIGNING_SECRET: z.string().trim().min(1).optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

@@ -56,6 +56,7 @@ model Organization {
   clientRevenues       ClientRevenue[]
   privacySettings      OrganizationPrivacySettings?
   aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
 
   @@index([createdAt])
 }
@@ -101,6 +102,7 @@ model Client {
   slackChannelMappings SlackChannelMapping[]
   clientRevenues       ClientRevenue[]
   aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -121,6 +123,7 @@ model Project {
   slackChannelMappings SlackChannelMapping[]
   clientRevenues       ClientRevenue[]
   aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, clientId, name])
   @@index([organizationId])
@@ -139,6 +142,7 @@ model WorkflowType {
   organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   slackChannelMappings SlackChannelMapping[]
   aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -240,6 +244,7 @@ model AiRequestAudit {
   client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
   project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+  usageEvents              AiUsageEvent[]
 
   @@index([organizationId])
   @@index([userId])
@@ -248,6 +253,53 @@ model AiRequestAudit {
   @@index([workflowTypeId])
   @@index([status])
   @@index([createdAt])
+  @@index([externalLiteLlmRequestId])
+  @@index([slackTeamId, slackChannelId])
+}
+
+/// Normalized AI usage/cost facts ledger. One row per completed model call.
+/// Costs are stored as integer micros (1 USD = 1,000,000 micros) to avoid
+/// floating point/decimal precision issues during aggregation.
+/// AiRequestAudit remains the request lifecycle/status table; this table
+/// stores the measurable usage facts.
+model AiUsageEvent {
+  id                       String          @id @default(cuid())
+  organizationId           String
+  aiRequestAuditId         String?
+  source                   AiRequestSource
+  provider                 String
+  model                    String
+  promptTokens             Int             @default(0)
+  completionTokens         Int             @default(0)
+  totalTokens              Int             @default(0)
+  inputCostMicros          BigInt          @default(0)
+  outputCostMicros         BigInt          @default(0)
+  totalCostMicros          BigInt          @default(0)
+  latencyMs                Int?
+  externalLiteLlmRequestId String?
+  slackTeamId              String?
+  slackChannelId           String?
+  slackThreadTs            String?
+  slackMessageTs           String?
+  clientId                 String?
+  projectId                String?
+  workflowTypeId           String?
+  occurredAt               DateTime        @default(now())
+  createdAt                DateTime        @default(now())
+  organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudit           AiRequestAudit? @relation(fields: [aiRequestAuditId], references: [id], onDelete: SetNull)
+  client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([aiRequestAuditId])
+  @@index([source])
+  @@index([provider, model])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([workflowTypeId])
+  @@index([occurredAt])
   @@index([externalLiteLlmRequestId])
   @@index([slackTeamId, slackChannelId])
 }

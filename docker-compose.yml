@@ -10,6 +10,10 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Creates the separate "litellm" database on first volume init.
+      # For an existing volume, run:
+      #   docker compose exec postgres psql -U postgres -c "CREATE DATABASE litellm;"
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d cost_tracking_ai -U postgres"]
       interval: 5s
@@ -25,7 +29,9 @@ services:
     ports:
       - "127.0.0.1:4000:4000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/cost_tracking_ai
+      # LiteLLM keeps its internal tables in a dedicated "litellm" database so
+      # Prisma (which manages cost_tracking_ai) never sees or drops them.
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/litellm
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-openai-placeholder}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}

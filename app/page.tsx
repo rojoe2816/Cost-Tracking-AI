@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { authStatus } from "@/lib/auth";
+import { integrationStatusLabels } from "@/lib/integration-status";
 import { jobCatalog } from "@/lib/jobs";
 import { getLiteLLMRuntimeConfig } from "@/lib/litellm";
 import { getSlackRuntimeConfig } from "@/lib/slack";
@@ -110,13 +111,13 @@ export default function HomePage() {
                 <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <span>Slack configuration</span>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {slackConfig.enabled ? "Ready" : "Awaiting secrets"}
+                    {integrationStatusLabels[slackConfig.status]}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <span>LiteLLM configuration</span>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {liteLlmConfig.enabled ? "Ready" : "Awaiting credentials"}
+                    {integrationStatusLabels[liteLlmConfig.status]}
                   </Badge>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
