@@ -23,7 +23,7 @@ import type { SlackMappingStatus } from "@/lib/slack/attribution";
 export type JobName = "slack.ai_request";
 
 export type SlackAiRequestJobPayload = {
-  organizationId: string;
+  organizationId?: string | null;
   slackTeamId: string;
   slackChannelId: string;
   slackUserId: string;

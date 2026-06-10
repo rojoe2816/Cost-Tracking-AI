@@ -84,7 +84,7 @@ function mergePayloadAttribution(
     return resolved;
   }
 
-  const organizationId = resolved.organizationId ?? payload.organizationId;
+  const organizationId = resolved.organizationId ?? payload.organizationId ?? null;
 
   if (payload.aiRequestAuditId) {
     return {
@@ -151,6 +151,7 @@ async function handleUnmappedChannel(
     source: "SLACK",
     slackTeamId: payload.slackTeamId,
     slackChannelId: payload.slackChannelId,
+    slackUserId: payload.slackUserId,
     ...(payload.threadTs ? { slackThreadTs: payload.threadTs } : {}),
     ...(payload.messageTs ? { slackMessageTs: payload.messageTs } : {}),
   });
@@ -170,7 +171,6 @@ async function handleUnmappedChannel(
 
   // TODO: Complete client/project select menu handling in Slack interactivity.
   // TODO: Add dynamic project selection after client selection.
-  // TODO: Resume original request text from interactivity handler after assignment.
 
   const blocks = buildUnmappedChannelAssignmentBlocks({
     clients,
@@ -218,6 +218,7 @@ async function handleMappedChannel(
       workflowTypeId: attribution.workflowTypeId,
       slackTeamId: payload.slackTeamId,
       slackChannelId: payload.slackChannelId,
+      slackUserId: payload.slackUserId,
       ...(payload.threadTs ? { slackThreadTs: payload.threadTs } : {}),
       ...(payload.messageTs ? { slackMessageTs: payload.messageTs } : {}),
     });

@@ -130,6 +130,7 @@ describe("handleSlackAiRequestJob", () => {
         source: "SLACK",
         slackTeamId: "T_TEST",
         slackChannelId: "C_TEST",
+        slackUserId: "U_TEST",
       }),
     );
     expect(mockCreateQueuedAiRequestAudit.mock.calls[0]?.[0]).not.toHaveProperty(

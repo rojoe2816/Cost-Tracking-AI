@@ -120,6 +120,12 @@ Optional at boot (integrations):
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN`
 
+  Bot token used by `lib/slack/client.ts` for `chat.postMessage`, `chat.update`,
+  and recovering original message text via `conversations.history` /
+  `conversations.replies`. Required scopes include `channels:history`,
+  `groups:history`, `im:history`, and `mpim:history` (plus posting scopes for
+  your channel types).
+
 Integration variables can be absent and the app still starts. Routes and jobs
 that actually need an integration call `assertLiteLLMConfigured()` or
 `assertSlackConfigured()` and fail with a clear error at that point. The
@@ -277,7 +283,7 @@ default in `OrganizationPrivacySettings`.
 ## Not implemented yet
 
 - Authentication and session management
-- Live LiteLLM ingestion (the Slack job processor is still a stub)
+- Live LiteLLM ingestion through the Slack job handler (events → queue → LiteLLM)
 - Live Slack installation and sync flows
 - Durable background job execution (current queue is in-process, dev-only)
 

@@ -11,12 +11,14 @@ export interface SlackEventBody {
   user?: string;
   channel?: string;
   ts?: string;
+  thread_ts?: string;
   text?: string;
 }
 
 export interface SlackEventCallbackPayload {
   type: "event_callback";
   team_id?: string;
+  authorizations?: Array<{ team_id?: string }>;
   api_app_id?: string;
   event_id?: string;
   event_time?: number;

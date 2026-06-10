@@ -139,3 +139,63 @@ export async function updateSlackMessage(input: {
     ...(input.blocks ? { blocks: input.blocks } : {}),
   });
 }
+
+type SlackConversationMessage = {
+  ts?: string;
+  text?: string;
+};
+
+type ConversationsHistoryResponse = SlackApiResponse & {
+  messages?: SlackConversationMessage[];
+};
+
+type ConversationsRepliesResponse = SlackApiResponse & {
+  messages?: SlackConversationMessage[];
+};
+
+/**
+ * Fetches the text of a Slack message by channel and timestamp.
+ *
+ * Requires bot token scopes such as channels:history, groups:history,
+ * im:history, and mpim:history depending on channel type.
+ *
+ * Message text is returned to the caller only — it is never logged here.
+ */
+export async function fetchMessageText(input: {
+  channel: string;
+  messageTs: string;
+  threadTs?: string | null;
+}): Promise<{ text: string | null }> {
+  const useReplies =
+    Boolean(input.threadTs) && input.threadTs !== input.messageTs;
+
+  if (useReplies && input.threadTs) {
+    const data = await callSlackApi<ConversationsRepliesResponse>(
+      "conversations.replies",
+      {
+        channel: input.channel,
+        ts: input.threadTs,
+        limit: 200,
+      },
+    );
+
+    const message = data.messages?.find((entry) => entry.ts === input.messageTs);
+    const text = message?.text?.trim();
+
+    return { text: text || null };
+  }
+
+  const data = await callSlackApi<ConversationsHistoryResponse>(
+    "conversations.history",
+    {
+      channel: input.channel,
+      latest: input.messageTs,
+      inclusive: true,
+      limit: 1,
+    },
+  );
+
+  const text = data.messages?.[0]?.text?.trim();
+
+  return { text: text || null };
+}

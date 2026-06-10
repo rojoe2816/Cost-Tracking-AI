@@ -230,6 +230,7 @@ model AiRequestAudit {
   externalLiteLlmRequestId String?
   slackTeamId              String?
   slackChannelId           String?
+  slackUserId              String?
   slackThreadTs            String?
   slackMessageTs           String?
   clientId                 String?

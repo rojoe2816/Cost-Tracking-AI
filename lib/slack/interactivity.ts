@@ -5,6 +5,7 @@ import {
   createOrUpdateSlackChannelMapping,
   type SlackAttribution,
 } from "@/lib/slack/attribution";
+import { fetchMessageText, postSlackMessage } from "@/lib/slack/client";
 
 export type SlackInteractionPayload = {
   type?: string;
@@ -40,6 +41,9 @@ const ACTION_ID_TO_MODE: Record<string, string> = {
   assign_internal: "ASSIGN_INTERNAL",
   cancel_assignment: "CANCEL",
 };
+
+const MESSAGE_RECOVERY_FAILURE_TEXT =
+  "I could not recover the original Slack message. Please send the request again.";
 
 export function parseSlackInteractivePayload(rawBody: string):
   | { ok: true; payload: SlackInteractionPayload }
@@ -162,32 +166,90 @@ async function lookupOriginalRequest(originalRequestId: string) {
   return audit;
 }
 
-async function enqueueOriginalRequest(input: {
-  audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>;
+function hasResumeSlackMetadata(
+  audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>,
+): audit is NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>> & {
   slackTeamId: string;
   slackChannelId: string;
   slackUserId: string;
+  slackMessageTs: string;
+} {
+  return Boolean(
+    audit.slackTeamId &&
+      audit.slackChannelId &&
+      audit.slackUserId &&
+      audit.slackMessageTs,
+  );
+}
+
+async function notifyMessageRecoveryFailure(input: {
+  audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>;
+  fallbackChannelId: string;
+}) {
+  const channel = input.audit.slackChannelId ?? input.fallbackChannelId;
+  const threadTs = input.audit.slackThreadTs ?? input.audit.slackMessageTs ?? undefined;
+
+  await postSlackMessage({
+    channel,
+    text: MESSAGE_RECOVERY_FAILURE_TEXT,
+    ...(threadTs ? { threadTs } : {}),
+  });
+}
+
+async function resumeOriginalRequest(input: {
+  audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>;
+  fallbackChannelId: string;
   attribution: SlackAttribution;
 }) {
   const { audit, attribution } = input;
 
-  // Prompt text is not stored in AiRequestAudit yet (METADATA_ONLY default).
-  // TODO: Persist a safe reference or redacted prompt snapshot when privacy
-  // settings allow the job processor to resume the original request text.
-  const text = "";
+  if (!hasResumeSlackMetadata(audit)) {
+    logger.warn(
+      {
+        originalRequestId: audit.id,
+        hasSlackTeamId: Boolean(audit.slackTeamId),
+        hasSlackChannelId: Boolean(audit.slackChannelId),
+        hasSlackUserId: Boolean(audit.slackUserId),
+        hasSlackMessageTs: Boolean(audit.slackMessageTs),
+      },
+      "Original AI request audit missing Slack metadata; cannot resume",
+    );
+    await notifyMessageRecoveryFailure(input);
+    return;
+  }
+
+  const { text } = await fetchMessageText({
+    channel: audit.slackChannelId,
+    messageTs: audit.slackMessageTs,
+    threadTs: audit.slackThreadTs,
+  });
+
+  if (!text) {
+    logger.warn(
+      {
+        originalRequestId: audit.id,
+        slackTeamId: audit.slackTeamId,
+        slackChannelId: audit.slackChannelId,
+        hasSlackThreadTs: Boolean(audit.slackThreadTs),
+      },
+      "Could not recover original Slack message text",
+    );
+    await notifyMessageRecoveryFailure(input);
+    return;
+  }
 
   await enqueueJob("slack.ai_request", {
     organizationId: attribution.organizationId ?? audit.organizationId,
-    slackTeamId: input.slackTeamId,
-    slackChannelId: input.slackChannelId,
-    slackUserId: input.slackUserId,
+    slackTeamId: audit.slackTeamId,
+    slackChannelId: audit.slackChannelId,
+    slackUserId: audit.slackUserId,
     text,
-    ...(audit.slackThreadTs ? { threadTs: audit.slackThreadTs } : {}),
-    ...(audit.slackMessageTs ? { messageTs: audit.slackMessageTs } : {}),
+    threadTs: audit.slackThreadTs ?? audit.slackMessageTs,
+    messageTs: audit.slackMessageTs,
     clientId: attribution.clientId,
     projectId: attribution.projectId,
     workflowTypeId: attribution.workflowTypeId,
-    mappingStatus: attribution.mappingStatus,
+    mappingStatus: "MAPPED",
     aiRequestAuditId: audit.id,
   });
 }
@@ -275,17 +337,15 @@ export async function handleSlackInteractiveAction(
   const channelType = inferChannelType(slackChannelId);
 
   if (action.action_id === "assign_internal") {
-    await enqueueOriginalRequest({
+    await resumeOriginalRequest({
       audit,
-      slackTeamId,
-      slackChannelId,
-      slackUserId,
+      fallbackChannelId: slackChannelId,
       attribution: {
         organizationId: audit.organizationId,
         clientId: null,
         projectId: null,
         workflowTypeId: null,
-        mappingStatus: "UNMAPPED",
+        mappingStatus: "MAPPED",
       },
     });
 
@@ -335,11 +395,9 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
-  await enqueueOriginalRequest({
+  await resumeOriginalRequest({
     audit,
-    slackTeamId,
-    slackChannelId,
-    slackUserId,
+    fallbackChannelId: slackChannelId,
     attribution,
   });
 

@@ -21,6 +21,7 @@ export async function createQueuedAiRequestAudit(input: {
   source: "SLACK" | "WEB";
   slackTeamId?: string;
   slackChannelId?: string;
+  slackUserId?: string;
   slackThreadTs?: string;
   slackMessageTs?: string;
   clientId?: string | null;
@@ -35,6 +36,7 @@ export async function createQueuedAiRequestAudit(input: {
       status: "QUEUED",
       slackTeamId: input.slackTeamId ?? null,
       slackChannelId: input.slackChannelId ?? null,
+      slackUserId: input.slackUserId ?? null,
       slackThreadTs: input.slackThreadTs ?? null,
       slackMessageTs: input.slackMessageTs ?? null,
       clientId: input.clientId ?? null,
@@ -51,6 +53,7 @@ export async function createProcessingAiRequestAudit(input: {
   source: "SLACK" | "WEB";
   slackTeamId?: string;
   slackChannelId?: string;
+  slackUserId?: string;
   slackThreadTs?: string;
   slackMessageTs?: string;
   clientId?: string | null;
@@ -64,6 +67,7 @@ export async function createProcessingAiRequestAudit(input: {
       status: "PROCESSING",
       slackTeamId: input.slackTeamId ?? null,
       slackChannelId: input.slackChannelId ?? null,
+      slackUserId: input.slackUserId ?? null,
       slackThreadTs: input.slackThreadTs ?? null,
       slackMessageTs: input.slackMessageTs ?? null,
       clientId: input.clientId ?? null,
@@ -131,6 +135,7 @@ export async function getAiRequestAuditById(id: string) {
       organizationId: true,
       slackTeamId: true,
       slackChannelId: true,
+      slackUserId: true,
       slackThreadTs: true,
       slackMessageTs: true,
       clientId: true,
