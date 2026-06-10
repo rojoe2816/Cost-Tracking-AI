@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
+    "simulate:slack": "tsx scripts/simulate-slack-event.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

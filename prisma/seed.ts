@@ -119,6 +119,97 @@ async function main() {
       promptStorageMode: demoAgency.privacy.promptStorageMode,
     },
   });
+
+  // Local development seed data for Slack simulation (no real Slack OAuth).
+  // T_DEMO + C_ACME resolves to a mapped client/project/workflow for pipeline tests.
+  // C_UNMAPPED is intentionally not seeded so UNMAPPED assignment flow can be exercised.
+  const DEMO_SLACK_TEAM_ID = "T_DEMO";
+  const DEMO_SLACK_TEAM_NAME = "Demo Slack Workspace";
+  const DEMO_MAPPED_CHANNEL_ID = "C_ACME";
+  const DEMO_MAPPED_CHANNEL_NAME = "client-acme-seo";
+  const DEMO_CLIENT_NAME = "Acme Dental";
+  const DEMO_PROJECT_NAME = "SEO Retainer";
+  const DEMO_WORKFLOW_TYPE_NAME = "Client Update";
+
+  const acmeClient = await prisma.client.findUnique({
+    where: {
+      organizationId_name: {
+        organizationId: organization.id,
+        name: DEMO_CLIENT_NAME,
+      },
+    },
+  });
+
+  if (!acmeClient) {
+    throw new Error(`Seed prerequisite missing: client "${DEMO_CLIENT_NAME}"`);
+  }
+
+  const seoProject = await prisma.project.findUnique({
+    where: {
+      organizationId_clientId_name: {
+        organizationId: organization.id,
+        clientId: acmeClient.id,
+        name: DEMO_PROJECT_NAME,
+      },
+    },
+  });
+
+  if (!seoProject) {
+    throw new Error(`Seed prerequisite missing: project "${DEMO_PROJECT_NAME}"`);
+  }
+
+  const clientUpdateWorkflow = await prisma.workflowType.findUnique({
+    where: {
+      organizationId_slug: {
+        organizationId: organization.id,
+        slug: slugify(DEMO_WORKFLOW_TYPE_NAME),
+      },
+    },
+  });
+
+  if (!clientUpdateWorkflow) {
+    throw new Error(
+      `Seed prerequisite missing: workflow type "${DEMO_WORKFLOW_TYPE_NAME}"`,
+    );
+  }
+
+  const slackWorkspace = await prisma.slackWorkspace.upsert({
+    where: { slackTeamId: DEMO_SLACK_TEAM_ID },
+    update: {
+      organizationId: organization.id,
+      slackTeamName: DEMO_SLACK_TEAM_NAME,
+    },
+    create: {
+      organizationId: organization.id,
+      slackTeamId: DEMO_SLACK_TEAM_ID,
+      slackTeamName: DEMO_SLACK_TEAM_NAME,
+    },
+  });
+
+  await prisma.slackChannelMapping.upsert({
+    where: {
+      slackWorkspaceId_slackChannelId: {
+        slackWorkspaceId: slackWorkspace.id,
+        slackChannelId: DEMO_MAPPED_CHANNEL_ID,
+      },
+    },
+    update: {
+      organizationId: organization.id,
+      slackChannelName: DEMO_MAPPED_CHANNEL_NAME,
+      clientId: acmeClient.id,
+      projectId: seoProject.id,
+      defaultWorkflowTypeId: clientUpdateWorkflow.id,
+    },
+    create: {
+      organizationId: organization.id,
+      slackWorkspaceId: slackWorkspace.id,
+      slackChannelId: DEMO_MAPPED_CHANNEL_ID,
+      slackChannelName: DEMO_MAPPED_CHANNEL_NAME,
+      clientId: acmeClient.id,
+      projectId: seoProject.id,
+      defaultWorkflowTypeId: clientUpdateWorkflow.id,
+    },
+  });
 }
 
 main()

@@ -251,6 +251,14 @@ invocations. It exists so route handlers stay thin (Slack requires a 2xx
 acknowledgment within ~3 seconds) and will be replaced by a durable queue
 (Inngest, Trigger.dev, BullMQ, SQS, or a dedicated worker) before production.
 
+Local signed Slack event testing (no ngrok, no real Slack API):
+
+```bash
+npm run simulate:slack -- --team T_DEMO --channel C_ACME --text "@YourBot draft a client update"
+```
+
+See `scripts/simulate-slack-event.ts` for CLI options (`C_UNMAPPED`, `T_UNKNOWN`, etc.).
+
 ## Usage and cost tracking
 
 Real ingestion writes to two tables:
@@ -266,6 +274,80 @@ Real ingestion writes to two tables:
 
 Prompt text is not stored by default, matching the `METADATA_ONLY` privacy
 default in `OrganizationPrivacySettings`.
+
+## Analytics architecture (spend dashboard prep)
+
+Before building dashboard spend cards, the analytics strategy was validated
+against the live local LiteLLM schema.
+
+**Database ownership**
+
+- `cost_tracking_ai` (Prisma) — app business data: organizations, clients,
+  projects, Slack mappings, revenue, `AiRequestAudit`, and normalized
+  `AiUsageEvent` facts written by the Slack worker.
+- `litellm` (LiteLLM only) — raw proxy spend logs such as
+  `"LiteLLM_SpendLogs"`, plus LiteLLM daily rollups
+  (`LiteLLM_DailyUserSpend`, `LiteLLM_DailyTeamSpend`, `LiteLLM_DailyTagSpend`,
+  etc.).
+
+These are separate Postgres databases on the same server. Prisma `db:push`
+against `cost_tracking_ai` does not touch LiteLLM internal tables.
+
+**LiteLLM raw spend logs**
+
+The primary per-request spend table is `"LiteLLM_SpendLogs"`. Relevant columns
+include:
+
+- `request_id`, `spend`, `prompt_tokens`, `completion_tokens`, `total_tokens`
+- `model`, `custom_llm_provider`, `status`, `"startTime"`, `request_duration_ms`
+- `metadata` (jsonb), `request_tags` (jsonb), `organization_id`, `team_id`
+
+Local dev currently has only failed `/api/litellm-test` proxy attempts in
+`LiteLLM_SpendLogs` (zero spend, empty `request_tags`). App metadata/tags from
+`sendLiteLlmChatCompletion` (`organization_id`, `client_id`, `app_request_id`,
+`org:…`, `client:…`, etc.) are **expected** to appear in successful spend rows
+but are **unverified** until a successful Slack worker → LiteLLM call runs with
+real provider keys.
+
+**Privacy**
+
+- LiteLLM owns raw spend logs.
+- The app owns business attribution, revenue, margin, and UX.
+- Prompt/response text is not stored by default.
+- Spend analytics should read LiteLLM spend logs, not duplicate raw rows into
+  app tables.
+
+**Why not a SQL view yet**
+
+A view inside `cost_tracking_ai` cannot select from `litellm` tables without
+`postgres_fdw`, `dblink`, or collapsing into one database with separate
+schemas. That adds operational complexity and is brittle for local/prod.
+
+**Recommended first implementation (Option A)**
+
+Use a separate **read-only analytics connection** to the `litellm` database
+(later: `LITELLM_ANALYTICS_DATABASE_URL`) and normalize rows in TypeScript via
+`lib/analytics/spend.ts`. Query `"LiteLLM_SpendLogs"` (and optionally
+`LiteLLM_DailyTagSpend` for rollups) without copying raw rows into Prisma
+models.
+
+For MVP dashboard cards, prefer **`AiUsageEvent` in the app DB** first — it
+already stores normalized token/cost facts plus client/project/workflow
+attribution from the Slack worker, with no prompt/response text. Use the
+read-only LiteLLM connection later for reconciliation, provider-level drill-down,
+or gaps where the worker did not write `AiUsageEvent`.
+
+**Not chosen yet**
+
+- Option B — `postgres_fdw` / `dblink` + cross-DB SQL view (`app_ai_spend_events`)
+- Option C — same database, different schema (requires explicit architecture approval)
+
+**Next implementation step**
+
+Add `lib/analytics/spend.ts` with a read-only LiteLLM Postgres client, typed
+row mappers for `"LiteLLM_SpendLogs"`, and dashboard query helpers that join
+normalized spend facts to app attribution — starting with `AiUsageEvent`, then
+optional LiteLLM reconciliation once successful spend rows exist.
 
 ## Included infrastructure
 
@@ -283,9 +365,16 @@ default in `OrganizationPrivacySettings`.
 ## Not implemented yet
 
 - Authentication and session management
-- Live LiteLLM ingestion through the Slack job handler (events → queue → LiteLLM)
-- Live Slack installation and sync flows
+- Slack OAuth install and workspace sync (manual `/slack` mapping + seed data only)
 - Durable background job execution (current queue is in-process, dev-only)
+- Dashboard spend cards and LiteLLM spend reconciliation (`lib/analytics/spend.ts`)
+- Client/project select menu completion in Slack assignment Block Kit
 
-The shell and schema are ready for those next milestones without hiding business
+**Implemented in Step 1 (mock/local):** Slack Events → queue → worker
+(UNKNOWN_WORKSPACE / UNMAPPED / MAPPED), interactivity resume, assignment message
+updates, centralized Slack client helpers, fake workspace seed (`T_DEMO` /
+`C_ACME`), `/slack` manual mapping CRUD, signed event simulation
+(`npm run simulate:slack`), and privacy regression tests.
+
+The shell and schema are ready for controlled real testing without hiding business
 logic inside UI components.
