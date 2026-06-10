@@ -349,6 +349,13 @@ row mappers for `"LiteLLM_SpendLogs"`, and dashboard query helpers that join
 normalized spend facts to app attribution — starting with `AiUsageEvent`, then
 optional LiteLLM reconciliation once successful spend rows exist.
 
+## Phase 2 controlled real testing
+
+See [`docs/phase-2-controlled-real-testing.md`](docs/phase-2-controlled-real-testing.md).
+
+Real credentials must never be committed. Use `.env.phase2.example` as a placeholder
+template and copy values into local `.env`.
+
 ## Included infrastructure
 
 - `lib/env.ts` validates runtime configuration with Zod.
