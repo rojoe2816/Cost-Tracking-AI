@@ -73,3 +73,21 @@ export async function markAiRequestFailed(
     },
   });
 }
+
+export async function getAiRequestAuditById(id: string) {
+  return db.aiRequestAudit.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      organizationId: true,
+      slackTeamId: true,
+      slackChannelId: true,
+      slackThreadTs: true,
+      slackMessageTs: true,
+      clientId: true,
+      projectId: true,
+      workflowTypeId: true,
+      userId: true,
+    },
+  });
+}

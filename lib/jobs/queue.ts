@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import type { SlackMappingStatus } from "@/lib/slack/attribution";
 
 /**
  * Background job abstraction for Slack AI request processing.
@@ -28,11 +29,32 @@ export type SlackAiRequestJobPayload = {
   text: string;
   threadTs?: string;
   messageTs?: string;
+  clientId?: string | null;
+  projectId?: string | null;
+  workflowTypeId?: string | null;
+  mappingStatus?: SlackMappingStatus;
+  aiRequestAuditId?: string;
 };
 
 type JobPayloadByName = {
   "slack.ai_request": SlackAiRequestJobPayload;
 };
+
+function safeJobMetadata(payload: SlackAiRequestJobPayload) {
+  return {
+    organizationId: payload.organizationId,
+    slackTeamId: payload.slackTeamId,
+    slackChannelId: payload.slackChannelId,
+    slackUserId: payload.slackUserId,
+    hasThreadTs: Boolean(payload.threadTs),
+    hasMessageTs: Boolean(payload.messageTs),
+    textLength: payload.text.length,
+    mappingStatus: payload.mappingStatus,
+    hasClientId: Boolean(payload.clientId),
+    hasProjectId: Boolean(payload.projectId),
+    hasWorkflowTypeId: Boolean(payload.workflowTypeId),
+  };
+}
 
 /**
  * Schedules a job for asynchronous processing and returns quickly.
@@ -41,20 +63,37 @@ type JobPayloadByName = {
  * failures — background errors are caught and logged so unhandled promise
  * rejections cannot crash the app.
  */
-export async function enqueueJob<Name extends JobName>(
-  name: Name,
-  payload: JobPayloadByName[Name],
+export async function enqueueJob(
+  name: JobName,
+  payload: SlackAiRequestJobPayload,
 ): Promise<void> {
+  logger.info(
+    {
+      jobName: name,
+      ...safeJobMetadata(payload),
+    },
+    "Enqueuing background job",
+  );
+
   scheduleInProcessJob(async () => {
     try {
-      await runJob(name, payload);
+      await dispatchJob(name, payload);
     } catch (error) {
-      logger.error({ err: error, jobName: name }, "Background job failed");
+      logger.error(
+        {
+          err: error,
+          jobName: name,
+          organizationId: payload.organizationId,
+          slackTeamId: payload.slackTeamId,
+          slackChannelId: payload.slackChannelId,
+        },
+        "Background job failed",
+      );
     }
   });
 }
 
-async function runJob(
+async function dispatchJob(
   name: JobName,
   payload: JobPayloadByName[JobName],
 ): Promise<void> {
@@ -63,8 +102,6 @@ async function runJob(
       await processSlackAiRequestJob(payload);
       return;
     default: {
-      // Exhaustive check: adding a JobName without a case above is a
-      // compile-time error.
       const exhaustiveCheck: never = name;
       throw new Error(`Unsupported job name: ${String(exhaustiveCheck)}`);
     }
@@ -72,12 +109,15 @@ async function runJob(
 }
 
 function scheduleInProcessJob(job: () => Promise<void>): void {
-  // TODO: Replace this local in-process dispatcher with a durable queue
-  // such as Inngest, Trigger.dev, BullMQ, SQS, or a dedicated worker.
+  // TODO: Replace this local in-process dispatcher with a durable queue such as
+  // Inngest, Trigger.dev, BullMQ, SQS, or a dedicated worker.
   //
-  // setImmediate defers execution until after the current request's I/O
-  // cycle, so the Slack route can flush its 200 response without waiting
-  // on job work. Intentionally minimal and not production-grade.
+  // This is intentionally minimal for local development and MVP wiring.
+  // It is not durable: jobs will be lost if the process crashes or restarts.
+  //
+  // Slack requires a fast HTTP 2xx acknowledgment, typically within 3 seconds,
+  // so expensive model calls and persistence work should happen outside the
+  // Slack request lifecycle.
   setImmediate(() => {
     void job();
   });
@@ -87,22 +127,22 @@ async function processSlackAiRequestJob(
   payload: SlackAiRequestJobPayload,
 ): Promise<void> {
   logger.info(
-    {
-      jobName: "slack.ai_request",
-      organizationId: payload.organizationId,
-      slackTeamId: payload.slackTeamId,
-      slackChannelId: payload.slackChannelId,
-      slackUserId: payload.slackUserId,
-      hasThreadTs: Boolean(payload.threadTs),
-      hasMessageTs: Boolean(payload.messageTs),
-      textLength: payload.text.length,
-    },
-    "Slack AI request job stub received",
+    safeJobMetadata(payload),
+    "Processing Slack AI request job stub",
   );
 
-  // TODO: Implement Slack AI request processing:
-  // 1. Persist the request/event metadata.
-  // 2. Call LiteLLM outside the Slack request lifecycle.
-  // 3. Store usage/cost data.
-  // 4. Post or update the Slack message with the final result.
+  // TODO:
+  // 1. Create or update AiRequestAudit lifecycle records.
+  // 2. Resolve Slack channel mapping to client/project/workflow.
+  // 3. Call LiteLLM outside the Slack request lifecycle.
+  // 4. Store normalized usage/cost data in AiUsageEvent.
+  // 5. Post or update the Slack response.
+
+  logger.info(
+    {
+      ...safeJobMetadata(payload),
+      jobName: "slack.ai_request",
+    },
+    "Slack AI request job stub completed",
+  );
 }

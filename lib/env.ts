@@ -31,6 +31,8 @@ export const envSchema = z.object({
     .string()
     .url("LITELLM_PROXY_URL must be a valid URL")
     .optional(),
+  LITELLM_DEFAULT_MODEL: z.string().trim().min(1).optional(),
+  LITELLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   SLACK_BOT_TOKEN: z.string().trim().min(1).optional(),
   SLACK_SIGNING_SECRET: z.string().trim().min(1).optional(),
 });
