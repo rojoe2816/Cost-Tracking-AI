@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { handleSlackAiRequestJob } from "@/lib/jobs/handlers/slackAiRequest";
 import type { SlackMappingStatus } from "@/lib/slack/attribution";
 
 /**
@@ -126,23 +127,5 @@ function scheduleInProcessJob(job: () => Promise<void>): void {
 async function processSlackAiRequestJob(
   payload: SlackAiRequestJobPayload,
 ): Promise<void> {
-  logger.info(
-    safeJobMetadata(payload),
-    "Processing Slack AI request job stub",
-  );
-
-  // TODO:
-  // 1. Create or update AiRequestAudit lifecycle records.
-  // 2. Resolve Slack channel mapping to client/project/workflow.
-  // 3. Call LiteLLM outside the Slack request lifecycle.
-  // 4. Store normalized usage/cost data in AiUsageEvent.
-  // 5. Post or update the Slack response.
-
-  logger.info(
-    {
-      ...safeJobMetadata(payload),
-      jobName: "slack.ai_request",
-    },
-    "Slack AI request job stub completed",
-  );
+  await handleSlackAiRequestJob(payload);
 }

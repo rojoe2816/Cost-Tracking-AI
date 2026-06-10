@@ -23,6 +23,9 @@ export async function createQueuedAiRequestAudit(input: {
   slackChannelId?: string;
   slackThreadTs?: string;
   slackMessageTs?: string;
+  clientId?: string | null;
+  projectId?: string | null;
+  workflowTypeId?: string | null;
   promptStored?: boolean;
 }): Promise<{ id: string }> {
   return db.aiRequestAudit.create({
@@ -34,16 +37,62 @@ export async function createQueuedAiRequestAudit(input: {
       slackChannelId: input.slackChannelId ?? null,
       slackThreadTs: input.slackThreadTs ?? null,
       slackMessageTs: input.slackMessageTs ?? null,
+      clientId: input.clientId ?? null,
+      projectId: input.projectId ?? null,
+      workflowTypeId: input.workflowTypeId ?? null,
       promptStored: input.promptStored ?? false,
     },
     select: { id: true },
   });
 }
 
-export async function markAiRequestProcessing(id: string): Promise<void> {
+export async function createProcessingAiRequestAudit(input: {
+  organizationId: string;
+  source: "SLACK" | "WEB";
+  slackTeamId?: string;
+  slackChannelId?: string;
+  slackThreadTs?: string;
+  slackMessageTs?: string;
+  clientId?: string | null;
+  projectId?: string | null;
+  workflowTypeId?: string | null;
+}): Promise<{ id: string }> {
+  return db.aiRequestAudit.create({
+    data: {
+      organizationId: input.organizationId,
+      source: input.source,
+      status: "PROCESSING",
+      slackTeamId: input.slackTeamId ?? null,
+      slackChannelId: input.slackChannelId ?? null,
+      slackThreadTs: input.slackThreadTs ?? null,
+      slackMessageTs: input.slackMessageTs ?? null,
+      clientId: input.clientId ?? null,
+      projectId: input.projectId ?? null,
+      workflowTypeId: input.workflowTypeId ?? null,
+      promptStored: false,
+    },
+    select: { id: true },
+  });
+}
+
+export async function markAiRequestProcessing(
+  id: string,
+  input?: {
+    clientId?: string | null;
+    projectId?: string | null;
+    workflowTypeId?: string | null;
+  },
+): Promise<void> {
   await db.aiRequestAudit.update({
     where: { id },
-    data: { status: "PROCESSING" },
+    data: {
+      status: "PROCESSING",
+      ...(input?.clientId !== undefined ? { clientId: input.clientId } : {}),
+      ...(input?.projectId !== undefined ? { projectId: input.projectId } : {}),
+      ...(input?.workflowTypeId !== undefined
+        ? { workflowTypeId: input.workflowTypeId }
+        : {}),
+    },
   });
 }
 
@@ -88,6 +137,50 @@ export async function getAiRequestAuditById(id: string) {
       projectId: true,
       workflowTypeId: true,
       userId: true,
+    },
+  });
+}
+
+export async function createAiUsageEvent(input: {
+  organizationId: string;
+  aiRequestAuditId: string;
+  source: "SLACK" | "WEB";
+  provider: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  totalCostMicros: bigint;
+  latencyMs?: number;
+  externalLiteLlmRequestId?: string;
+  slackTeamId?: string;
+  slackChannelId?: string;
+  slackThreadTs?: string;
+  slackMessageTs?: string;
+  clientId?: string | null;
+  projectId?: string | null;
+  workflowTypeId?: string | null;
+}): Promise<void> {
+  await db.aiUsageEvent.create({
+    data: {
+      organizationId: input.organizationId,
+      aiRequestAuditId: input.aiRequestAuditId,
+      source: input.source,
+      provider: input.provider,
+      model: input.model,
+      promptTokens: input.promptTokens,
+      completionTokens: input.completionTokens,
+      totalTokens: input.totalTokens,
+      totalCostMicros: input.totalCostMicros,
+      ...(input.latencyMs !== undefined ? { latencyMs: input.latencyMs } : {}),
+      externalLiteLlmRequestId: input.externalLiteLlmRequestId ?? null,
+      slackTeamId: input.slackTeamId ?? null,
+      slackChannelId: input.slackChannelId ?? null,
+      slackThreadTs: input.slackThreadTs ?? null,
+      slackMessageTs: input.slackMessageTs ?? null,
+      clientId: input.clientId ?? null,
+      projectId: input.projectId ?? null,
+      workflowTypeId: input.workflowTypeId ?? null,
     },
   });
 }
