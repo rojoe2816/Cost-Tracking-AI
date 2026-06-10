@@ -41,8 +41,8 @@ vi.mock("@/lib/litellm/client", () => ({
 }));
 
 vi.mock("@/lib/slack/client", () => ({
-  postSlackMessage: mockPostSlackMessage,
-  updateSlackMessage: mockUpdateSlackMessage,
+  postMessage: mockPostSlackMessage,
+  updateMessage: mockUpdateSlackMessage,
 }));
 
 vi.mock("@/lib/slack/blocks", () => ({
@@ -73,8 +73,8 @@ describe("handleSlackAiRequestJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockBuildUnmappedChannelAssignmentBlocks.mockReturnValue([{ type: "section" }]);
-    mockPostSlackMessage.mockResolvedValue({ ts: "3333.0003", channel: "C_TEST" });
-    mockUpdateSlackMessage.mockResolvedValue(undefined);
+    mockPostSlackMessage.mockResolvedValue({ ts: "3333.0003" });
+    mockUpdateSlackMessage.mockResolvedValue({ ts: "3333.0003" });
     mockCreateQueuedAiRequestAudit.mockResolvedValue({ id: "audit_queued" });
     mockCreateProcessingAiRequestAudit.mockResolvedValue({ id: "audit_processing" });
     mockSendLiteLlmChatCompletion.mockResolvedValue({

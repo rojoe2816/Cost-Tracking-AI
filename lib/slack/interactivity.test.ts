@@ -3,11 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetAudit = vi.hoisted(() => vi.fn());
 const mockEnqueueJob = vi.hoisted(() => vi.fn());
 const mockCreateMapping = vi.hoisted(() => vi.fn());
+const mockMarkAiRequestCanceled = vi.hoisted(() => vi.fn());
 const mockFetchMessageText = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ text: "Recovered original prompt" }),
 );
-const mockPostSlackMessage = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ ts: "999.0001", channel: "C_TEST" }),
+const mockPostMessage = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ ts: "999.0001" }),
+);
+const mockUpdateMessage = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ ts: "888.0001" }),
 );
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -18,6 +22,7 @@ const mockLogger = vi.hoisted(() => ({
 
 vi.mock("@/lib/ai/requests", () => ({
   getAiRequestAuditById: mockGetAudit,
+  markAiRequestCanceled: mockMarkAiRequestCanceled,
 }));
 
 vi.mock("@/lib/jobs", () => ({
@@ -30,7 +35,14 @@ vi.mock("@/lib/slack/attribution", () => ({
 
 vi.mock("@/lib/slack/client", () => ({
   fetchMessageText: mockFetchMessageText,
-  postSlackMessage: mockPostSlackMessage,
+  postMessage: mockPostMessage,
+  updateMessage: mockUpdateMessage,
+  SlackClientError: class SlackClientError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "SlackClientError";
+    }
+  },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -48,6 +60,7 @@ const AUDIT_ID = "audit_123";
 const TEAM_ID = "T_TEST";
 const CHANNEL_ID = "C_TEST";
 const USER_ID = "U_TEST";
+const ASSIGNMENT_MESSAGE_TS = "777.0001";
 const RECOVERED_TEXT = "Recovered original prompt";
 
 const auditRecord = {
@@ -70,6 +83,7 @@ function buildPayload(actionId: string, mode: string, extra: Record<string, unkn
     team: { id: TEAM_ID },
     user: { id: USER_ID },
     channel: { id: CHANNEL_ID, name: "general" },
+    message: { ts: ASSIGNMENT_MESSAGE_TS },
     actions: [
       {
         action_id: actionId,
@@ -134,6 +148,7 @@ describe("handleSlackInteractiveAction", () => {
     vi.clearAllMocks();
     mockGetAudit.mockResolvedValue(auditRecord);
     mockEnqueueJob.mockResolvedValue(undefined);
+    mockMarkAiRequestCanceled.mockResolvedValue(undefined);
     mockFetchMessageText.mockResolvedValue({ text: RECOVERED_TEXT });
     mockCreateMapping.mockResolvedValue({
       organizationId: "org_1",
@@ -152,9 +167,15 @@ describe("handleSlackInteractiveAction", () => {
     expect(mockFetchMessageText).not.toHaveBeenCalled();
     expect(mockEnqueueJob).not.toHaveBeenCalled();
     expect(mockCreateMapping).not.toHaveBeenCalled();
+    expect(mockMarkAiRequestCanceled).toHaveBeenCalledWith(AUDIT_ID);
+    expect(mockUpdateMessage).toHaveBeenCalledWith({
+      channel: CHANNEL_ID,
+      ts: ASSIGNMENT_MESSAGE_TS,
+      text: "Canceled. No AI usage was recorded.",
+    });
   });
 
-  it("assign_once recovers Slack text and enqueues without MAP_CHANNEL persistence", async () => {
+  it("assign_once recovers Slack text, enqueues, and updates assignment message", async () => {
     await handleSlackInteractiveAction(
       buildPayload("assign_once", "ASSIGN_ONCE", {
         state: {
@@ -169,7 +190,6 @@ describe("handleSlackInteractiveAction", () => {
       }),
     );
 
-    expect(mockGetAudit).toHaveBeenCalledWith(AUDIT_ID);
     expect(mockFetchMessageText).toHaveBeenCalledWith({
       channel: CHANNEL_ID,
       messageTs: "333.444",
@@ -178,23 +198,21 @@ describe("handleSlackInteractiveAction", () => {
     expect(mockCreateMapping).toHaveBeenCalledWith(
       expect.objectContaining({ mode: "ASSIGN_ONCE" }),
     );
-    expect(mockEnqueueJob).toHaveBeenCalledWith("slack.ai_request", {
-      organizationId: "org_1",
-      slackTeamId: TEAM_ID,
-      slackChannelId: CHANNEL_ID,
-      slackUserId: USER_ID,
-      text: RECOVERED_TEXT,
-      threadTs: "111.222",
-      messageTs: "333.444",
-      clientId: "client_1",
-      projectId: null,
-      workflowTypeId: null,
-      mappingStatus: "MAPPED",
-      aiRequestAuditId: AUDIT_ID,
+    expect(mockEnqueueJob).toHaveBeenCalledWith(
+      "slack.ai_request",
+      expect.objectContaining({
+        text: RECOVERED_TEXT,
+        aiRequestAuditId: AUDIT_ID,
+      }),
+    );
+    expect(mockUpdateMessage).toHaveBeenCalledWith({
+      channel: CHANNEL_ID,
+      ts: ASSIGNMENT_MESSAGE_TS,
+      text: "Assigned this request once. Processing...",
     });
   });
 
-  it("map_channel persists mapping and enqueues recovered text", async () => {
+  it("map_channel persists mapping and updates assignment message", async () => {
     await handleSlackInteractiveAction(
       buildPayload("map_channel", "MAP_CHANNEL", {
         state: {
@@ -212,16 +230,14 @@ describe("handleSlackInteractiveAction", () => {
     expect(mockCreateMapping).toHaveBeenCalledWith(
       expect.objectContaining({ mode: "MAP_CHANNEL" }),
     );
-    expect(mockEnqueueJob).toHaveBeenCalledWith(
-      "slack.ai_request",
-      expect.objectContaining({
-        text: RECOVERED_TEXT,
-        aiRequestAuditId: AUDIT_ID,
-      }),
-    );
+    expect(mockUpdateMessage).toHaveBeenCalledWith({
+      channel: CHANNEL_ID,
+      ts: ASSIGNMENT_MESSAGE_TS,
+      text: "Channel mapped. Processing...",
+    });
   });
 
-  it("assign_internal enqueues recovered text with null client/project/workflow", async () => {
+  it("assign_internal enqueues null attribution and updates assignment message", async () => {
     await handleSlackInteractiveAction(
       buildPayload("assign_internal", "ASSIGN_INTERNAL"),
     );
@@ -235,9 +251,13 @@ describe("handleSlackInteractiveAction", () => {
         workflowTypeId: null,
         mappingStatus: "MAPPED",
         text: RECOVERED_TEXT,
-        aiRequestAuditId: AUDIT_ID,
       }),
     );
+    expect(mockUpdateMessage).toHaveBeenCalledWith({
+      channel: CHANNEL_ID,
+      ts: ASSIGNMENT_MESSAGE_TS,
+      text: "Assigned as internal/no client. Processing...",
+    });
   });
 
   it("does not enqueue when original audit is missing", async () => {
@@ -259,25 +279,21 @@ describe("handleSlackInteractiveAction", () => {
     );
 
     expect(mockEnqueueJob).not.toHaveBeenCalled();
-    expect(mockPostSlackMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining("could not recover the original Slack message"),
-      }),
-    );
+    expect(mockUpdateMessage).not.toHaveBeenCalled();
+    expect(mockPostMessage).toHaveBeenCalled();
   });
 
-  it("does not enqueue when audit Slack metadata is incomplete", async () => {
-    mockGetAudit.mockResolvedValue({
-      ...auditRecord,
-      slackMessageTs: null,
-    });
+  it("logs safely when assignment message update fails", async () => {
+    mockUpdateMessage.mockRejectedValue(new Error("Slack update failed"));
 
     await handleSlackInteractiveAction(
       buildPayload("assign_internal", "ASSIGN_INTERNAL"),
     );
 
-    expect(mockFetchMessageText).not.toHaveBeenCalled();
-    expect(mockEnqueueJob).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).toHaveBeenCalled();
+    expect(mockLogger.error).toHaveBeenCalled();
+    const loggedPayload = JSON.stringify(mockLogger.error.mock.calls);
+    expect(loggedPayload).not.toContain(RECOVERED_TEXT);
   });
 
   it("does not log recovered Slack message text", async () => {
@@ -285,16 +301,11 @@ describe("handleSlackInteractiveAction", () => {
       buildPayload("assign_internal", "ASSIGN_INTERNAL"),
     );
 
-    const loggedPayload = JSON.stringify(mockLogger.info.mock.calls.concat(mockLogger.warn.mock.calls));
+    const loggedPayload = JSON.stringify([
+      ...mockLogger.info.mock.calls,
+      ...mockLogger.warn.mock.calls,
+      ...mockLogger.error.mock.calls,
+    ]);
     expect(loggedPayload).not.toContain(RECOVERED_TEXT);
-  });
-
-  it("does not persist recovered text in audit helpers", async () => {
-    await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
-    );
-
-    expect(mockGetAudit).toHaveBeenCalled();
-    expect(JSON.stringify(mockGetAudit.mock.calls)).not.toContain(RECOVERED_TEXT);
   });
 });

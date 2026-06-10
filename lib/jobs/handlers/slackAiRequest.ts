@@ -18,7 +18,7 @@ import {
   type SlackAttribution,
 } from "@/lib/slack/attribution";
 import { buildUnmappedChannelAssignmentBlocks } from "@/lib/slack/blocks";
-import { postSlackMessage, updateSlackMessage } from "@/lib/slack/client";
+import { postMessage, updateMessage } from "@/lib/slack/client";
 
 const SLACK_AI_SYSTEM_PROMPT =
   "You are a helpful assistant responding in Slack. Be concise and clear.";
@@ -124,7 +124,7 @@ function slackThreadOptions(payload: SlackAiRequestJobPayload) {
 async function handleUnknownWorkspace(
   payload: SlackAiRequestJobPayload,
 ): Promise<void> {
-  await postSlackMessage({
+  await postMessage({
     channel: payload.slackChannelId,
     text: UNKNOWN_WORKSPACE_MESSAGE,
     ...slackThreadOptions(payload),
@@ -177,7 +177,7 @@ async function handleUnmappedChannel(
     originalRequestId: audit.id,
   });
 
-  await postSlackMessage({
+  await postMessage({
     channel: payload.slackChannelId,
     text: "This channel is not mapped to a client/project yet. How should this AI usage be assigned?",
     blocks,
@@ -226,17 +226,16 @@ async function handleMappedChannel(
   }
 
   let thinkingMessageTs: string | undefined;
-  let thinkingChannel = payload.slackChannelId;
+  const thinkingChannel = payload.slackChannelId;
 
   try {
-    const thinkingMessage = await postSlackMessage({
+    const thinkingMessage = await postMessage({
       channel: payload.slackChannelId,
       text: THINKING_MESSAGE,
       ...slackThreadOptions(payload),
     });
 
     thinkingMessageTs = thinkingMessage.ts;
-    thinkingChannel = thinkingMessage.channel;
 
     const startedAt = Date.now();
     const completion = await sendLiteLlmChatCompletion({
@@ -293,7 +292,7 @@ async function handleMappedChannel(
       workflowTypeId: attribution.workflowTypeId,
     });
 
-    await updateSlackMessage({
+    await updateMessage({
       channel: thinkingChannel,
       ts: thinkingMessageTs,
       text: completion.content,
@@ -333,7 +332,7 @@ async function handleMappedChannel(
     );
 
     if (thinkingMessageTs) {
-      await updateSlackMessage({
+      await updateMessage({
         channel: thinkingChannel,
         ts: thinkingMessageTs,
         text: FAILURE_MESSAGE,
@@ -341,7 +340,7 @@ async function handleMappedChannel(
       return;
     }
 
-    await postSlackMessage({
+    await postMessage({
       channel: payload.slackChannelId,
       text: FAILURE_MESSAGE,
       ...slackThreadOptions(payload),

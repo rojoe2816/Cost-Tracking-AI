@@ -6,6 +6,7 @@ import {
   combineStatuses,
   type IntegrationStatus,
 } from "@/lib/integration-status";
+import { logger } from "@/lib/logger";
 import type { SlackBlock } from "@/lib/slack/blocks";
 
 export interface SlackRuntimeConfig {
@@ -21,12 +22,17 @@ type SlackApiResponse = {
   error?: string;
   ts?: string;
   channel?: string;
+  message_ts?: string;
 };
 
 export class SlackClientError extends Error {
   constructor(
     message: string,
-    public readonly slackError?: string,
+    public readonly details?: {
+      method?: string;
+      slackError?: string;
+      status?: number;
+    },
   ) {
     super(message);
     this.name = "SlackClientError";
@@ -76,39 +82,86 @@ export function createSlackAuthHeaders() {
   };
 }
 
+function assertSlackBotTokenForApi(method: string): string {
+  const token = env.SLACK_BOT_TOKEN?.trim();
+
+  if (!token) {
+    throw new SlackClientError("Slack bot token is not configured", {
+      method,
+      slackError: "not_configured",
+    });
+  }
+
+  if (classifySecret(token) === "placeholder") {
+    throw new SlackClientError("Slack bot token is a dev placeholder", {
+      method,
+      slackError: "placeholder_token",
+    });
+  }
+
+  return token;
+}
+
 async function callSlackApi<T extends SlackApiResponse>(
   method: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  assertSlackConfigured();
+  const botToken = assertSlackBotTokenForApi(method);
 
   const response = await fetch(`${SLACK_API_BASE}/${method}`, {
     method: "POST",
     headers: {
-      ...createSlackAuthHeaders(),
+      Authorization: `Bearer ${botToken}`,
       "Content-Type": "application/json; charset=utf-8",
     },
     body: JSON.stringify(body),
   });
 
+  if (!response.ok) {
+    throw new SlackClientError(`Slack API ${method} returned HTTP ${response.status}`, {
+      method,
+      status: response.status,
+    });
+  }
+
   const data = (await response.json().catch(() => null)) as T | null;
 
-  if (!data?.ok) {
-    throw new SlackClientError(
-      `Slack API ${method} failed`,
-      data?.error,
-    );
+  if (!data) {
+    throw new SlackClientError(`Slack API ${method} returned invalid JSON`, {
+      method,
+      status: response.status,
+    });
   }
+
+  if (!data.ok) {
+    throw new SlackClientError(`Slack API ${method} failed`, {
+      method,
+      ...(data.error ? { slackError: data.error } : {}),
+      status: response.status,
+    });
+  }
+
+  logger.debug(
+    {
+      method,
+      channel: typeof body.channel === "string" ? body.channel : undefined,
+      hasBlocks: Array.isArray(body.blocks),
+      hasThreadTs: typeof body.thread_ts === "string",
+      returnedTs: data.ts ?? data.message_ts,
+      status: response.status,
+    },
+    "Slack API call succeeded",
+  );
 
   return data;
 }
 
-export async function postSlackMessage(input: {
+export async function postMessage(input: {
   channel: string;
-  text: string;
   threadTs?: string;
+  text: string;
   blocks?: SlackBlock[];
-}): Promise<{ ts: string; channel: string }> {
+}): Promise<{ ts: string }> {
   const data = await callSlackApi<SlackApiResponse>("chat.postMessage", {
     channel: input.channel,
     text: input.text,
@@ -117,27 +170,52 @@ export async function postSlackMessage(input: {
   });
 
   if (!data.ts) {
-    throw new SlackClientError("Slack chat.postMessage response missing ts");
+    throw new SlackClientError("Slack chat.postMessage response missing ts", {
+      method: "chat.postMessage",
+    });
   }
 
-  return {
-    ts: data.ts,
-    channel: data.channel ?? input.channel,
-  };
+  return { ts: data.ts };
 }
 
-export async function updateSlackMessage(input: {
+export async function updateMessage(input: {
   channel: string;
   ts: string;
   text: string;
   blocks?: SlackBlock[];
-}): Promise<void> {
-  await callSlackApi("chat.update", {
+}): Promise<{ ts: string }> {
+  const data = await callSlackApi<SlackApiResponse>("chat.update", {
     channel: input.channel,
     ts: input.ts,
     text: input.text,
     ...(input.blocks ? { blocks: input.blocks } : {}),
   });
+
+  if (!data.ts) {
+    throw new SlackClientError("Slack chat.update response missing ts", {
+      method: "chat.update",
+    });
+  }
+
+  return { ts: data.ts };
+}
+
+export async function postEphemeral(input: {
+  channel: string;
+  user: string;
+  text: string;
+  blocks?: SlackBlock[];
+}): Promise<{ messageTs?: string }> {
+  const data = await callSlackApi<SlackApiResponse>("chat.postEphemeral", {
+    channel: input.channel,
+    user: input.user,
+    text: input.text,
+    ...(input.blocks ? { blocks: input.blocks } : {}),
+  });
+
+  return {
+    ...(data.message_ts ? { messageTs: data.message_ts } : {}),
+  };
 }
 
 type SlackConversationMessage = {
@@ -198,4 +276,29 @@ export async function fetchMessageText(input: {
   const text = data.messages?.[0]?.text?.trim();
 
   return { text: text || null };
+}
+
+/** @deprecated Use postMessage instead. */
+export async function postSlackMessage(input: {
+  channel: string;
+  text: string;
+  threadTs?: string;
+  blocks?: SlackBlock[];
+}): Promise<{ ts: string; channel: string }> {
+  const result = await postMessage(input);
+
+  return {
+    ts: result.ts,
+    channel: input.channel,
+  };
+}
+
+/** @deprecated Use updateMessage instead. */
+export async function updateSlackMessage(input: {
+  channel: string;
+  ts: string;
+  text: string;
+  blocks?: SlackBlock[];
+}): Promise<void> {
+  await updateMessage(input);
 }

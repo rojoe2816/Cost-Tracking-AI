@@ -127,6 +127,10 @@ export async function markAiRequestFailed(
   });
 }
 
+export async function markAiRequestCanceled(id: string): Promise<void> {
+  await markAiRequestFailed(id, "Canceled by user.");
+}
+
 export async function getAiRequestAuditById(id: string) {
   return db.aiRequestAudit.findUnique({
     where: { id },

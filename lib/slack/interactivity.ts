@@ -1,11 +1,16 @@
-import { getAiRequestAuditById } from "@/lib/ai/requests";
+import { getAiRequestAuditById, markAiRequestCanceled } from "@/lib/ai/requests";
 import { enqueueJob } from "@/lib/jobs";
 import { logger } from "@/lib/logger";
 import {
   createOrUpdateSlackChannelMapping,
   type SlackAttribution,
 } from "@/lib/slack/attribution";
-import { fetchMessageText, postSlackMessage } from "@/lib/slack/client";
+import {
+  fetchMessageText,
+  postMessage,
+  SlackClientError,
+  updateMessage,
+} from "@/lib/slack/client";
 
 export type SlackInteractionPayload = {
   type?: string;
@@ -44,6 +49,13 @@ const ACTION_ID_TO_MODE: Record<string, string> = {
 
 const MESSAGE_RECOVERY_FAILURE_TEXT =
   "I could not recover the original Slack message. Please send the request again.";
+
+const ASSIGNMENT_STATUS_MESSAGES = {
+  assign_once: "Assigned this request once. Processing...",
+  map_channel: "Channel mapped. Processing...",
+  assign_internal: "Assigned as internal/no client. Processing...",
+  cancel_assignment: "Canceled. No AI usage was recorded.",
+} as const;
 
 export function parseSlackInteractivePayload(rawBody: string):
   | { ok: true; payload: SlackInteractionPayload }
@@ -189,18 +201,55 @@ async function notifyMessageRecoveryFailure(input: {
   const channel = input.audit.slackChannelId ?? input.fallbackChannelId;
   const threadTs = input.audit.slackThreadTs ?? input.audit.slackMessageTs ?? undefined;
 
-  await postSlackMessage({
+  await postMessage({
     channel,
     text: MESSAGE_RECOVERY_FAILURE_TEXT,
     ...(threadTs ? { threadTs } : {}),
   });
 }
 
+async function updateAssignmentMessage(
+  payload: SlackInteractionPayload,
+  text: string,
+): Promise<void> {
+  const channel = payload.channel?.id;
+  const ts = payload.message?.ts;
+
+  if (!channel || !ts) {
+    logger.warn(
+      {
+        hasChannel: Boolean(channel),
+        hasMessageTs: Boolean(ts),
+      },
+      "Assignment message ts missing; skipping chat.update",
+    );
+    // TODO: response_url fallback if payload.message.ts is unavailable.
+    return;
+  }
+
+  try {
+    await updateMessage({
+      channel,
+      ts,
+      text,
+    });
+  } catch (error) {
+    logger.error(
+      {
+        err: error instanceof SlackClientError ? error.message : "Slack update failed",
+        channel,
+        messageTs: ts,
+      },
+      "Failed to update assignment Slack message",
+    );
+  }
+}
+
 async function resumeOriginalRequest(input: {
   audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>;
   fallbackChannelId: string;
   attribution: SlackAttribution;
-}) {
+}): Promise<boolean> {
   const { audit, attribution } = input;
 
   if (!hasResumeSlackMetadata(audit)) {
@@ -215,7 +264,7 @@ async function resumeOriginalRequest(input: {
       "Original AI request audit missing Slack metadata; cannot resume",
     );
     await notifyMessageRecoveryFailure(input);
-    return;
+    return false;
   }
 
   const { text } = await fetchMessageText({
@@ -235,7 +284,7 @@ async function resumeOriginalRequest(input: {
       "Could not recover original Slack message text",
     );
     await notifyMessageRecoveryFailure(input);
-    return;
+    return false;
   }
 
   await enqueueJob("slack.ai_request", {
@@ -252,6 +301,8 @@ async function resumeOriginalRequest(input: {
     mappingStatus: "MAPPED",
     aiRequestAuditId: audit.id,
   });
+
+  return true;
 }
 
 /**
@@ -313,6 +364,17 @@ export async function handleSlackInteractiveAction(
   }
 
   if (action.action_id === "cancel_assignment") {
+    const audit = await lookupOriginalRequest(parsedValue.value.originalRequestId);
+
+    if (audit) {
+      await markAiRequestCanceled(audit.id);
+    }
+
+    await updateAssignmentMessage(
+      payload,
+      ASSIGNMENT_STATUS_MESSAGES.cancel_assignment,
+    );
+
     logger.info(
       {
         actionId: action.action_id,
@@ -322,7 +384,6 @@ export async function handleSlackInteractiveAction(
       },
       "Slack assignment canceled by user",
     );
-    // TODO: Update the original Slack message from the async worker using chat.update.
     return;
   }
 
@@ -337,7 +398,7 @@ export async function handleSlackInteractiveAction(
   const channelType = inferChannelType(slackChannelId);
 
   if (action.action_id === "assign_internal") {
-    await resumeOriginalRequest({
+    const resumed = await resumeOriginalRequest({
       audit,
       fallbackChannelId: slackChannelId,
       attribution: {
@@ -349,7 +410,13 @@ export async function handleSlackInteractiveAction(
       },
     });
 
-    // TODO: Update the original Slack message from the async worker using chat.update.
+    if (resumed) {
+      await updateAssignmentMessage(
+        payload,
+        ASSIGNMENT_STATUS_MESSAGES.assign_internal,
+      );
+    }
+
     return;
   }
 
@@ -395,11 +462,18 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
-  await resumeOriginalRequest({
+  const resumed = await resumeOriginalRequest({
     audit,
     fallbackChannelId: slackChannelId,
     attribution,
   });
 
-  // TODO: Update the original Slack message from the async worker using chat.update.
+  if (resumed) {
+    await updateAssignmentMessage(
+      payload,
+      action.action_id === "map_channel"
+        ? ASSIGNMENT_STATUS_MESSAGES.map_channel
+        : ASSIGNMENT_STATUS_MESSAGES.assign_once,
+    );
+  }
 }
