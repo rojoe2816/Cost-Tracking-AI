@@ -8,6 +8,8 @@ const mockMarkAiRequestCompleted = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestFailed = vi.hoisted(() => vi.fn());
 const mockCreateAiUsageEvent = vi.hoisted(() => vi.fn());
 const mockSendLiteLlmChatCompletion = vi.hoisted(() => vi.fn());
+const mockIsLiteLlmAnalyticsConfigured = vi.hoisted(() => vi.fn());
+const mockReconcileLiteLlmSpendByAppRequestId = vi.hoisted(() => vi.fn());
 const mockPostSlackMessage = vi.hoisted(() => vi.fn());
 const mockUpdateSlackMessage = vi.hoisted(() => vi.fn());
 const mockBuildUnmappedChannelAssignmentBlocks = vi.hoisted(() => vi.fn());
@@ -38,6 +40,11 @@ vi.mock("@/lib/ai/requests", () => ({
 
 vi.mock("@/lib/litellm/client", () => ({
   sendLiteLlmChatCompletion: mockSendLiteLlmChatCompletion,
+}));
+
+vi.mock("@/lib/analytics/litellmSpendReconciliation", () => ({
+  isLiteLlmAnalyticsConfigured: mockIsLiteLlmAnalyticsConfigured,
+  reconcileLiteLlmSpendByAppRequestId: mockReconcileLiteLlmSpendByAppRequestId,
 }));
 
 vi.mock("@/lib/slack/client", () => ({
@@ -77,6 +84,8 @@ describe("handleSlackAiRequestJob", () => {
     mockUpdateSlackMessage.mockResolvedValue({ ts: "3333.0003" });
     mockCreateQueuedAiRequestAudit.mockResolvedValue({ id: "audit_queued" });
     mockCreateProcessingAiRequestAudit.mockResolvedValue({ id: "audit_processing" });
+    mockIsLiteLlmAnalyticsConfigured.mockReturnValue(true);
+    mockReconcileLiteLlmSpendByAppRequestId.mockResolvedValue(null);
     mockSendLiteLlmChatCompletion.mockResolvedValue({
       content: "Assistant response text",
       model: "gpt-4o-mini",
@@ -87,7 +96,7 @@ describe("handleSlackAiRequestJob", () => {
         totalTokens: 15,
       },
       costUsd: 0.001,
-      litellmRequestId: "litellm-req-1",
+      externalLiteLlmRequestId: "litellm-req-1",
     });
     mockDb.client.findMany.mockResolvedValue([{ id: "client_1", name: "Client One" }]);
   });
@@ -201,6 +210,50 @@ describe("handleSlackAiRequestJob", () => {
       ts: "3333.0003",
       text: "Assistant response text",
     });
+  });
+
+  it("reconciles missing request id, provider, and cost before persisting usage", async () => {
+    mockResolveSlackAttribution.mockResolvedValue({
+      organizationId: "org_1",
+      clientId: "client_1",
+      projectId: "project_1",
+      workflowTypeId: "workflow_1",
+      mappingStatus: "MAPPED",
+    });
+    mockSendLiteLlmChatCompletion.mockResolvedValue({
+      content: "Assistant response text",
+      model: "gpt-4o-mini",
+      usage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+      },
+    });
+    mockReconcileLiteLlmSpendByAppRequestId.mockResolvedValue({
+      externalLiteLlmRequestId: "chatcmpl-123",
+      provider: "openai",
+      costUsd: 0.0000132,
+    });
+
+    await handleSlackAiRequestJob(BASE_PAYLOAD);
+
+    expect(mockReconcileLiteLlmSpendByAppRequestId).toHaveBeenCalledWith(
+      "audit_processing",
+      undefined,
+    );
+    expect(mockMarkAiRequestCompleted).toHaveBeenCalledWith(
+      "audit_processing",
+      "chatcmpl-123",
+    );
+    expect(mockCreateAiUsageEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiRequestAuditId: "audit_processing",
+        provider: "openai",
+        model: "gpt-4o-mini",
+        externalLiteLlmRequestId: "chatcmpl-123",
+        totalCostMicros: 13n,
+      }),
+    );
   });
 
   it("marks audit failed and updates Slack on mapped processing errors", async () => {

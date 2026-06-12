@@ -114,7 +114,7 @@ describe("metadata-only privacy enforcement", () => {
           totalTokens: 15,
         },
         costUsd: 0.001,
-        litellmRequestId: "litellm-req-privacy-1",
+        externalLiteLlmRequestId: "litellm-req-privacy-1",
       };
     });
   });

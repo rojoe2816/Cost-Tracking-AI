@@ -8,16 +8,30 @@ const requiredString = (name: string) =>
     .trim()
     .min(1, `${name} is required`);
 
+const postgresUrl = (name: string) =>
+  requiredString(name).refine(
+    (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+    `${name} must be a PostgreSQL connection string`,
+  );
+
+const optionalPostgresUrl = (name: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${name} is required`)
+    .refine(
+      (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+      `${name} must be a PostgreSQL connection string`,
+    )
+    .optional();
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
     .default("info"),
   APP_BASE_URL: z.string().url("APP_BASE_URL must be a valid URL"),
-  DATABASE_URL: requiredString("DATABASE_URL").refine(
-    (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
-    "DATABASE_URL must be a PostgreSQL connection string",
-  ),
+  DATABASE_URL: postgresUrl("DATABASE_URL"),
   ENCRYPTION_KEY: requiredString("ENCRYPTION_KEY").min(
     32,
     "ENCRYPTION_KEY must be at least 32 characters long",
@@ -31,6 +45,9 @@ export const envSchema = z.object({
     .string()
     .url("LITELLM_PROXY_URL must be a valid URL")
     .optional(),
+  LITELLM_ANALYTICS_DATABASE_URL: optionalPostgresUrl(
+    "LITELLM_ANALYTICS_DATABASE_URL",
+  ),
   LITELLM_DEFAULT_MODEL: z.string().trim().min(1).optional(),
   LITELLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   SLACK_BOT_TOKEN: z.string().trim().min(1).optional(),

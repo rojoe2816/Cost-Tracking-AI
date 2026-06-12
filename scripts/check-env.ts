@@ -10,6 +10,9 @@ console.table({
   ENCRYPTION_KEY: env.ENCRYPTION_KEY ? "configured" : "missing",
   LITELLM_PROXY_URL: env.LITELLM_PROXY_URL,
   LITELLM_MASTER_KEY: env.LITELLM_MASTER_KEY ? "configured" : "missing",
+  LITELLM_ANALYTICS_DATABASE_URL: env.LITELLM_ANALYTICS_DATABASE_URL
+    ? "configured"
+    : "missing",
   SLACK_BOT_TOKEN: env.SLACK_BOT_TOKEN ? "configured" : "missing",
   SLACK_SIGNING_SECRET: env.SLACK_SIGNING_SECRET ? "configured" : "missing",
 });

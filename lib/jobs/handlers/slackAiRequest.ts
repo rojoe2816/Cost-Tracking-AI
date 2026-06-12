@@ -8,10 +8,19 @@ import {
   markAiRequestFailed,
   markAiRequestProcessing,
 } from "@/lib/ai/requests";
+import {
+  isLiteLlmAnalyticsConfigured,
+  reconcileLiteLlmSpendByAppRequestId,
+  type LiteLlmSpendReconciliation,
+} from "@/lib/analytics/litellmSpendReconciliation";
 import { usdToMicros } from "@/lib/db/costs";
 import { db } from "@/lib/db";
 import type { SlackAiRequestJobPayload } from "@/lib/jobs/queue";
-import { sendLiteLlmChatCompletion } from "@/lib/litellm/client";
+import {
+  sendLiteLlmChatCompletion,
+  type LiteLlmCompletionResult,
+  type LiteLlmUsage,
+} from "@/lib/litellm/client";
 import { logger } from "@/lib/logger";
 import {
   resolveSlackAttribution,
@@ -32,6 +41,15 @@ const FAILURE_MESSAGE =
 const THINKING_MESSAGE = "Thinking...";
 
 const MAX_ERROR_MESSAGE_LENGTH = 1000;
+
+type ResolvedLiteLlmCompletion = {
+  content: string;
+  provider: string;
+  model: string;
+  usage: Required<LiteLlmUsage>;
+  costUsd?: number;
+  externalLiteLlmRequestId?: string;
+};
 
 export async function handleSlackAiRequestJob(
   payload: SlackAiRequestJobPayload,
@@ -263,25 +281,36 @@ async function handleMappedChannel(
     });
 
     const latencyMs = Date.now() - startedAt;
+    const resolvedCompletion = await resolveLiteLlmCompletionForPersistence({
+      aiRequestAuditId: auditId,
+      completion,
+      organizationId: attribution.organizationId,
+    });
 
-    await markAiRequestCompleted(auditId, completion.litellmRequestId);
+    await markAiRequestCompleted(
+      auditId,
+      resolvedCompletion.externalLiteLlmRequestId,
+    );
 
     await createAiUsageEvent({
       organizationId: attribution.organizationId,
       aiRequestAuditId: auditId,
       source: "SLACK",
-      provider: completion.provider ?? "unknown",
-      model: completion.model,
-      promptTokens: completion.usage?.inputTokens ?? 0,
-      completionTokens: completion.usage?.outputTokens ?? 0,
-      totalTokens: completion.usage?.totalTokens ?? 0,
+      provider: resolvedCompletion.provider,
+      model: resolvedCompletion.model,
+      promptTokens: resolvedCompletion.usage.inputTokens,
+      completionTokens: resolvedCompletion.usage.outputTokens,
+      totalTokens: resolvedCompletion.usage.totalTokens,
       totalCostMicros:
-        completion.costUsd !== undefined
-          ? usdToMicros(completion.costUsd)
+        resolvedCompletion.costUsd !== undefined
+          ? usdToMicros(resolvedCompletion.costUsd)
           : 0n,
       latencyMs,
-      ...(completion.litellmRequestId
-        ? { externalLiteLlmRequestId: completion.litellmRequestId }
+      ...(resolvedCompletion.externalLiteLlmRequestId
+        ? {
+            externalLiteLlmRequestId:
+              resolvedCompletion.externalLiteLlmRequestId,
+          }
         : {}),
       slackTeamId: payload.slackTeamId,
       slackChannelId: payload.slackChannelId,
@@ -304,14 +333,14 @@ async function handleMappedChannel(
         organizationId: attribution.organizationId,
         slackTeamId: payload.slackTeamId,
         slackChannelId: payload.slackChannelId,
-        model: completion.model,
-        provider: completion.provider,
+        model: resolvedCompletion.model,
+        provider: resolvedCompletion.provider,
         latencyMs,
-        inputTokens: completion.usage?.inputTokens,
-        outputTokens: completion.usage?.outputTokens,
-        totalTokens: completion.usage?.totalTokens,
-        costUsd: completion.costUsd,
-        litellmRequestId: completion.litellmRequestId,
+        inputTokens: resolvedCompletion.usage.inputTokens,
+        outputTokens: resolvedCompletion.usage.outputTokens,
+        totalTokens: resolvedCompletion.usage.totalTokens,
+        costUsd: resolvedCompletion.costUsd,
+        externalLiteLlmRequestId: resolvedCompletion.externalLiteLlmRequestId,
       },
       "Slack AI request completed",
     );
@@ -354,4 +383,138 @@ function sanitizeJobErrorMessage(error: unknown): string {
   }
 
   return "Slack AI request failed".slice(0, MAX_ERROR_MESSAGE_LENGTH);
+}
+
+function completionNeedsReconciliation(completion: LiteLlmCompletionResult) {
+  return (
+    !completion.externalLiteLlmRequestId ||
+    !completion.provider ||
+    completion.costUsd === undefined ||
+    completion.usage?.inputTokens === undefined ||
+    completion.usage?.outputTokens === undefined ||
+    completion.usage?.totalTokens === undefined
+  );
+}
+
+function mergeUsage(
+  directUsage?: LiteLlmUsage,
+  reconciledUsage?: LiteLlmUsage,
+): Required<LiteLlmUsage> {
+  const inputTokens = directUsage?.inputTokens ?? reconciledUsage?.inputTokens ?? 0;
+  const outputTokens =
+    directUsage?.outputTokens ?? reconciledUsage?.outputTokens ?? 0;
+  const totalTokens =
+    directUsage?.totalTokens ??
+    reconciledUsage?.totalTokens ??
+    inputTokens + outputTokens;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
+}
+
+function mergeCompletion(
+  completion: LiteLlmCompletionResult,
+  reconciliation: LiteLlmSpendReconciliation | null,
+): ResolvedLiteLlmCompletion {
+  return {
+    content: completion.content,
+    provider: completion.provider ?? reconciliation?.provider ?? "unknown",
+    model: completion.model || reconciliation?.model || "unknown",
+    usage: mergeUsage(completion.usage, reconciliation?.usage),
+    ...(completion.costUsd !== undefined
+      ? { costUsd: completion.costUsd }
+      : reconciliation?.costUsd !== undefined
+        ? { costUsd: reconciliation.costUsd }
+        : {}),
+    ...(completion.externalLiteLlmRequestId
+      ? { externalLiteLlmRequestId: completion.externalLiteLlmRequestId }
+      : reconciliation?.externalLiteLlmRequestId
+        ? {
+            externalLiteLlmRequestId:
+              reconciliation.externalLiteLlmRequestId,
+          }
+        : {}),
+  };
+}
+
+async function resolveLiteLlmCompletionForPersistence(input: {
+  aiRequestAuditId: string;
+  completion: LiteLlmCompletionResult;
+  organizationId: string;
+}): Promise<ResolvedLiteLlmCompletion> {
+  let reconciliation: LiteLlmSpendReconciliation | null = null;
+
+  if (completionNeedsReconciliation(input.completion)) {
+    if (!isLiteLlmAnalyticsConfigured()) {
+      logger.warn(
+        {
+          aiRequestAuditId: input.aiRequestAuditId,
+          organizationId: input.organizationId,
+          missingExternalLiteLlmRequestId: !input.completion.externalLiteLlmRequestId,
+          missingProvider: !input.completion.provider,
+          missingCostUsd: input.completion.costUsd === undefined,
+        },
+        "LiteLLM analytics reconciliation skipped because no analytics database is configured",
+      );
+    } else {
+      try {
+        reconciliation = await reconcileLiteLlmSpendByAppRequestId(
+          input.aiRequestAuditId,
+          input.completion.externalLiteLlmRequestId,
+        );
+      } catch (error) {
+        logger.warn(
+          {
+            err: error,
+            aiRequestAuditId: input.aiRequestAuditId,
+            organizationId: input.organizationId,
+          },
+          "LiteLLM spend reconciliation failed",
+        );
+      }
+    }
+  }
+
+  const resolvedCompletion = mergeCompletion(input.completion, reconciliation);
+
+  if (reconciliation) {
+    logger.info(
+      {
+        aiRequestAuditId: input.aiRequestAuditId,
+        organizationId: input.organizationId,
+        externalLiteLlmRequestId: reconciliation.externalLiteLlmRequestId,
+        provider: reconciliation.provider,
+        model: reconciliation.model,
+        inputTokens: reconciliation.usage?.inputTokens,
+        outputTokens: reconciliation.usage?.outputTokens,
+        totalTokens: reconciliation.usage?.totalTokens,
+        costUsd: reconciliation.costUsd,
+      },
+      "Reconciled LiteLLM spend data from analytics database",
+    );
+  }
+
+  if (
+    !resolvedCompletion.externalLiteLlmRequestId ||
+    resolvedCompletion.provider === "unknown" ||
+    resolvedCompletion.costUsd === undefined
+  ) {
+    logger.warn(
+      {
+        aiRequestAuditId: input.aiRequestAuditId,
+        organizationId: input.organizationId,
+        hasExternalLiteLlmRequestId: Boolean(
+          resolvedCompletion.externalLiteLlmRequestId,
+        ),
+        provider: resolvedCompletion.provider,
+        hasCostUsd: resolvedCompletion.costUsd !== undefined,
+      },
+      "LiteLLM completion metadata remained incomplete after reconciliation",
+    );
+  }
+
+  return resolvedCompletion;
 }

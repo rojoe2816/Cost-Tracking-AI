@@ -54,10 +54,19 @@ type LiteLlmClientConfig = {
   timeoutMs: number;
 };
 
-type LiteLlmUsage = {
+export type LiteLlmUsage = {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+};
+
+export type LiteLlmCompletionResult = {
+  content: string;
+  provider?: string;
+  model: string;
+  usage?: LiteLlmUsage;
+  costUsd?: number;
+  externalLiteLlmRequestId?: string;
 };
 
 /**
@@ -134,6 +143,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const converted = Number(trimmed);
+    return Number.isFinite(converted) ? converted : undefined;
+  }
+
+  return undefined;
+}
+
 function truncateMessage(value: string, maxLength = MAX_ERROR_MESSAGE_LENGTH) {
   return value.length <= maxLength
     ? value
@@ -194,9 +226,61 @@ function extractUsage(body: unknown): LiteLlmUsage | undefined {
   };
 }
 
-function extractCostUsd(body: unknown): number | undefined {
+function extractHeaderValue(
+  headers: Headers,
+  names: readonly string[],
+): string | undefined {
+  for (const name of names) {
+    const value = headers.get(name);
+
+    if (isNonEmptyString(value)) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function extractRequestId(body: unknown, headers: Headers): string | undefined {
+  const candidates: unknown[] = [];
+
+  if (isRecord(body)) {
+    candidates.push(body.request_id, body.requestId, body.id);
+
+    if (isRecord(body._hidden_params)) {
+      candidates.push(
+        body._hidden_params.request_id,
+        body._hidden_params.requestId,
+        body._hidden_params.litellm_request_id,
+        body._hidden_params.litellmRequestId,
+        body._hidden_params.id,
+      );
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (isNonEmptyString(candidate)) {
+      return candidate.trim();
+    }
+  }
+
+  return extractHeaderValue(headers, [
+    "x-litellm-request-id",
+    "x-litellm-call-id",
+    "x-request-id",
+    "request-id",
+  ]);
+}
+
+function extractCostUsd(body: unknown, headers: Headers): number | undefined {
   if (!isRecord(body)) {
-    return undefined;
+    const headerCost = extractHeaderValue(headers, [
+      "x-litellm-response-cost",
+      "x-response-cost",
+      "response-cost",
+    ]);
+
+    return toFiniteNumber(headerCost);
   }
 
   const candidates: unknown[] = [
@@ -206,16 +290,28 @@ function extractCostUsd(body: unknown): number | undefined {
   ];
 
   if (isRecord(body._hidden_params)) {
-    candidates.push(body._hidden_params.response_cost);
+    candidates.push(
+      body._hidden_params.response_cost,
+      body._hidden_params.cost,
+      body._hidden_params.litellm_response_cost,
+    );
   }
 
   for (const candidate of candidates) {
-    if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      return candidate;
+    const parsed = toFiniteNumber(candidate);
+
+    if (parsed !== undefined) {
+      return parsed;
     }
   }
 
-  return undefined;
+  const headerCost = extractHeaderValue(headers, [
+    "x-litellm-response-cost",
+    "x-response-cost",
+    "response-cost",
+  ]);
+
+  return toFiniteNumber(headerCost);
 }
 
 function extractProvider(body: unknown): string | undefined {
@@ -234,6 +330,16 @@ function extractProvider(body: unknown): string | undefined {
 
     if (typeof body._hidden_params.litellm_provider === "string") {
       return body._hidden_params.litellm_provider;
+    }
+  }
+
+  const model = extractModel(body);
+
+  if (model?.includes("/")) {
+    const [provider] = model.split("/", 1);
+
+    if (provider) {
+      return provider;
     }
   }
 
@@ -284,14 +390,7 @@ export async function sendLiteLlmChatCompletion(input: {
   model?: string;
   messages: ChatMessage[];
   metadata: LiteLlmMetadata;
-}): Promise<{
-  content: string;
-  provider?: string;
-  model: string;
-  usage?: LiteLlmUsage;
-  costUsd?: number;
-  litellmRequestId?: string;
-}> {
+}): Promise<LiteLlmCompletionResult> {
   const config = getLiteLlmClientConfig();
   const model = input.model?.trim() || config.defaultModel;
   const startedAt = Date.now();
@@ -315,12 +414,8 @@ export async function sendLiteLlmChatCompletion(input: {
       signal: controller.signal,
     });
 
-    const litellmRequestId =
-      response.headers.get("x-litellm-request-id") ??
-      response.headers.get("x-request-id") ??
-      undefined;
-
     const body = await parseJsonSafely(response);
+    const externalLiteLlmRequestId = extractRequestId(body, response.headers);
 
     if (!response.ok) {
       const providerErrorCode = extractProviderErrorCode(body);
@@ -337,7 +432,7 @@ export async function sendLiteLlmChatCompletion(input: {
     }
 
     const usage = extractUsage(body);
-    const costUsd = extractCostUsd(body);
+    const costUsd = extractCostUsd(body, response.headers);
     const provider = extractProvider(body);
 
     logger.info(
@@ -349,7 +444,7 @@ export async function sendLiteLlmChatCompletion(input: {
         provider,
         status: response.status,
         latencyMs: Date.now() - startedAt,
-        litellmRequestId,
+        externalLiteLlmRequestId,
         ...(usage?.inputTokens !== undefined
           ? { inputTokens: usage.inputTokens }
           : {}),
@@ -370,7 +465,9 @@ export async function sendLiteLlmChatCompletion(input: {
       model: extractModel(body) ?? model,
       ...(usage ? { usage } : {}),
       ...(costUsd !== undefined ? { costUsd } : {}),
-      ...(litellmRequestId ? { litellmRequestId } : {}),
+      ...(externalLiteLlmRequestId
+        ? { externalLiteLlmRequestId }
+        : {}),
     };
   } catch (error) {
     if (error instanceof LiteLlmClientError) {

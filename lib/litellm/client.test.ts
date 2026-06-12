@@ -174,8 +174,50 @@ describe("sendLiteLlmChatCompletion", () => {
         totalTokens: 15,
       },
       costUsd: 0.00042,
-      litellmRequestId: "litellm-req-1",
+      externalLiteLlmRequestId: "litellm-req-1",
     });
+  });
+
+  it("falls back to response body ids when LiteLLM headers are absent", async () => {
+    fetchMock.mockResolvedValue(
+      mockFetchResponse({
+        id: "chatcmpl-123",
+        model: "gpt-4o-mini",
+        choices: [{ message: { role: "assistant", content: "Body id works" } }],
+      }),
+    );
+
+    const result = await sendLiteLlmChatCompletion({
+      model: "gpt-4o-mini",
+      messages: MESSAGES,
+      metadata: METADATA,
+    });
+
+    expect(result.externalLiteLlmRequestId).toBe("chatcmpl-123");
+  });
+
+  it("parses response cost from headers when LiteLLM omits body cost fields", async () => {
+    fetchMock.mockResolvedValue(
+      mockFetchResponse(
+        {
+          model: "gpt-4o-mini",
+          choices: [{ message: { role: "assistant", content: "Header cost" } }],
+        },
+        {
+          headers: {
+            "x-response-cost": "0.0000132",
+          },
+        },
+      ),
+    );
+
+    const result = await sendLiteLlmChatCompletion({
+      model: "gpt-4o-mini",
+      messages: MESSAGES,
+      metadata: METADATA,
+    });
+
+    expect(result.costUsd).toBe(0.0000132);
   });
 
   it("leaves costUsd undefined when LiteLLM does not return cost", async () => {
