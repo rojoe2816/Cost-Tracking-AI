@@ -56,3 +56,26 @@ export function formatUsdCompact(value: Decimal.Value) {
     maximumFractionDigits: 1,
   }).format(new Decimal(value).toNumber());
 }
+
+/** Shows sub-cent AI spend with extra precision instead of rounding to $0.00. */
+export function formatSmallUsd(value: Decimal.Value): string {
+  const decimal = new Decimal(value);
+
+  if (decimal.isZero()) {
+    return "$0.00";
+  }
+
+  if (decimal.gte(0.01)) {
+    return formatUsd(decimal, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(decimal.toNumber());
+}
