@@ -94,14 +94,33 @@ npm run db:push
 npm run db:seed
 ```
 
-8. Start the development server:
+8. Start the development server and durable worker in separate terminals:
 
 ```bash
 npm run dev
 ```
 
+```bash
+npm run worker
+```
+
+`QUEUE_ADAPTER=postgres` (default outside tests) persists jobs in the app
+database. `QUEUE_ADAPTER=in-memory` is local/test only and is not durable.
+
+Inspect recent durable jobs:
+
+```bash
+docker compose exec postgres psql -U postgres -d cost_tracking_ai -c '
+SELECT id, type, status, attempts, "runAfter", "lockedAt", "lastError", "createdAt", "updatedAt"
+FROM "BackgroundJob"
+ORDER BY "createdAt" DESC
+LIMIT 20;
+'
+```
+
 Open [http://localhost:3000](http://localhost:3000) for the landing page or
 [http://localhost:3000/dashboard](http://localhost:3000/dashboard) for the app shell.
+The internal jobs page lives at [http://localhost:3000/jobs](http://localhost:3000/jobs).
 
 ## Environment variables
 
@@ -119,6 +138,8 @@ Optional at boot (integrations):
 - `LITELLM_MASTER_KEY`
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN`
+
+- `QUEUE_ADAPTER` (`postgres` or `in-memory`; defaults to `postgres` in dev/prod and `in-memory` in tests)
 
   Bot token used by `lib/slack/client.ts` for `chat.postMessage`, `chat.update`,
   and recovering original message text via `conversations.history` /

@@ -2,18 +2,11 @@ import crypto from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockHandleAction = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockEnqueueJob = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-vi.mock("@/lib/slack/interactivity", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/slack/interactivity")>(
-    "@/lib/slack/interactivity",
-  );
-
-  return {
-    ...actual,
-    handleSlackInteractiveAction: mockHandleAction,
-  };
-});
+vi.mock("@/lib/jobs/queue", () => ({
+  enqueueJob: mockEnqueueJob,
+}));
 
 import { POST } from "./route";
 
@@ -91,7 +84,7 @@ describe("POST /api/slack/interactivity", () => {
     );
 
     expect(response.status).toBe(401);
-    expect(mockHandleAction).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
   });
 
   it("returns 400 when payload field is missing", async () => {
@@ -99,10 +92,10 @@ describe("POST /api/slack/interactivity", () => {
     const response = await POST(createRequest(rawBody));
 
     expect(response.status).toBe(400);
-    expect(mockHandleAction).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
   });
 
-  it("returns 200 for unsupported actions without scheduling handler", async () => {
+  it("returns 200 for unsupported actions without enqueuing a job", async () => {
     const rawBody = buildFormBody({
       type: "block_actions",
       actions: [{ action_id: "unsupported_action" }],
@@ -110,16 +103,17 @@ describe("POST /api/slack/interactivity", () => {
     const response = await POST(createRequest(rawBody));
 
     expect(response.status).toBe(200);
-    expect(mockHandleAction).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
   });
 
-  it("returns 200 and schedules handler for assignment_cancel", async () => {
+  it("returns 200 quickly and enqueues a durable interactivity job", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const rawBody = buildFormBody({
       type: "block_actions",
       team: { id: "T_TEST" },
       user: { id: "U_TEST" },
       channel: { id: "C_TEST" },
+      message: { ts: "1717891200.000100" },
       actions: [
         {
           action_id: "assignment_cancel",
@@ -136,9 +130,19 @@ describe("POST /api/slack/interactivity", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(fetchSpy).not.toHaveBeenCalled();
-
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(mockHandleAction).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueJob).toHaveBeenCalledWith(
+      "slack.interactivity",
+      expect.objectContaining({
+        actionId: "assignment_cancel",
+        slackTeamId: "T_TEST",
+        slackChannelId: "C_TEST",
+        slackUserId: "U_TEST",
+        messageTs: "1717891200.000100",
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("slack:interactivity:T_TEST:C_TEST"),
+      }),
+    );
   });
 
   it("verifies signature before parsing payload", async () => {

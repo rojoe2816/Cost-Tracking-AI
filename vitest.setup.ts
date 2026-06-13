@@ -10,4 +10,5 @@ process.env.LITELLM_DEFAULT_MODEL ??= "gpt-4o-mini";
 process.env.LITELLM_REQUEST_TIMEOUT_MS ??= "30000";
 process.env.SLACK_BOT_TOKEN ??= "xoxb-test-token";
 process.env.SLACK_SIGNING_SECRET ??= "test-signing-secret";
+process.env.QUEUE_ADAPTER ??= "in-memory";
 process.env.LOG_LEVEL ??= "silent";

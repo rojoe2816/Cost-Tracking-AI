@@ -9,10 +9,10 @@ const SUPPORTED_EVENT_TYPES = new Set(["message", "app_mention"]);
  *
  * Slack requires an HTTP 2xx response within 3 seconds, so the events route
  * acknowledges immediately and hands the payload here. This function
- * normalizes supported user messages and enqueues background AI work.
+ * normalizes supported user messages and enqueues durable background AI work.
  *
- * Prompt text is passed transiently through the job payload to the worker;
- * it is never stored in the database from this path.
+ * Prompt text is not stored in the job queue. The worker resolves message text
+ * transiently from Slack using message timestamps when processing jobs.
  */
 export async function processSlackEventAsync(
   payload: SlackEventCallbackPayload,
@@ -40,14 +40,19 @@ export async function processSlackEventAsync(
     return;
   }
 
-  await enqueueJob("slack.ai_request", {
-    slackTeamId: slackTeamId!,
-    slackChannelId: event!.channel!,
-    slackUserId: event!.user!,
-    text,
-    ...(event!.thread_ts ? { threadTs: event!.thread_ts } : {}),
-    ...(event!.ts ? { messageTs: event!.ts } : {}),
-  });
+  await enqueueJob(
+    "slack.ai_request",
+    {
+      slackTeamId: slackTeamId!,
+      slackChannelId: event!.channel!,
+      slackUserId: event!.user!,
+      ...(event!.thread_ts ? { threadTs: event!.thread_ts } : {}),
+      ...(event!.ts ? { messageTs: event!.ts } : {}),
+    },
+    {
+      idempotencyKey: `slack:event:${slackTeamId}:${event!.channel}:${event!.ts}`,
+    },
+  );
 
   logger.info(
     { ...metadata, enqueued: true },

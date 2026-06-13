@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockHandleSlackAiRequestJob = vi.hoisted(() =>
   vi.fn().mockResolvedValue(undefined),
@@ -17,7 +17,10 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { enqueueJob } from "./queue";
+import {
+  enqueueInMemoryJob,
+  resetInMemoryQueueForTests,
+} from "@/lib/queue/inMemoryQueue";
 
 const PAYLOAD = {
   organizationId: "org_1",
@@ -27,12 +30,29 @@ const PAYLOAD = {
   text: "hello",
 };
 
-describe("enqueueJob", () => {
+describe("in-memory queue adapter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetInMemoryQueueForTests();
+  });
+
   it("delegates slack.ai_request jobs to handleSlackAiRequestJob", async () => {
-    await enqueueJob("slack.ai_request", PAYLOAD);
+    await enqueueInMemoryJob("slack.ai_request", PAYLOAD);
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(mockHandleSlackAiRequestJob).toHaveBeenCalledTimes(1);
     expect(mockHandleSlackAiRequestJob).toHaveBeenCalledWith(PAYLOAD);
+  });
+
+  it("skips duplicate jobs with the same idempotency key", async () => {
+    await enqueueInMemoryJob("slack.ai_request", PAYLOAD, {
+      idempotencyKey: "slack:event:T_TEST:C_TEST:123.456",
+    });
+    await enqueueInMemoryJob("slack.ai_request", PAYLOAD, {
+      idempotencyKey: "slack:event:T_TEST:C_TEST:123.456",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockHandleSlackAiRequestJob).toHaveBeenCalledTimes(1);
   });
 });

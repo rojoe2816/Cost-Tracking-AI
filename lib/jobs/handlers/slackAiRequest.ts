@@ -4,6 +4,7 @@ import {
   createAiUsageEvent,
   createProcessingAiRequestAudit,
   createQueuedAiRequestAudit,
+  getAiRequestAuditById,
   markAiRequestCompleted,
   markAiRequestFailed,
   markAiRequestProcessing,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/analytics/litellmSpendReconciliation";
 import { usdToMicros } from "@/lib/db/costs";
 import { db } from "@/lib/db";
-import type { SlackAiRequestJobPayload } from "@/lib/jobs/queue";
+import type { SlackAiRequestJobPayload } from "@/lib/queue/types";
 import {
   sendLiteLlmChatCompletion,
   type LiteLlmCompletionResult,
@@ -27,7 +28,11 @@ import {
   type SlackAttribution,
 } from "@/lib/slack/attribution";
 import { buildUnmappedChannelAssignmentBlocks } from "@/lib/slack/blocks";
-import { postMessage, updateMessage } from "@/lib/slack/client";
+import {
+  fetchMessageText,
+  postMessage,
+  updateMessage,
+} from "@/lib/slack/client";
 
 const SLACK_AI_SYSTEM_PROMPT =
   "You are a helpful assistant responding in Slack. Be concise and clear.";
@@ -54,37 +59,58 @@ type ResolvedLiteLlmCompletion = {
 export async function handleSlackAiRequestJob(
   payload: SlackAiRequestJobPayload,
 ): Promise<void> {
+  const text = await resolveSlackRequestText(payload);
+
+  if (!text) {
+    logger.warn(
+      {
+        slackTeamId: payload.slackTeamId,
+        slackChannelId: payload.slackChannelId,
+        hasMessageTs: Boolean(payload.messageTs),
+        hasInlineText: Boolean(payload.text),
+        aiRequestAuditId: payload.aiRequestAuditId,
+      },
+      "Could not resolve Slack request text for background job",
+    );
+    return;
+  }
+
+  const resolvedPayload: SlackAiRequestJobPayload = {
+    ...payload,
+    text,
+  };
+
   const resolved = await resolveSlackAttribution({
-    slackTeamId: payload.slackTeamId,
-    slackChannelId: payload.slackChannelId,
+    slackTeamId: resolvedPayload.slackTeamId,
+    slackChannelId: resolvedPayload.slackChannelId,
   });
 
-  const attribution = mergePayloadAttribution(resolved, payload);
+  const attribution = mergePayloadAttribution(resolved, resolvedPayload);
 
   logger.info(
     {
       organizationId: attribution.organizationId,
-      slackTeamId: payload.slackTeamId,
-      slackChannelId: payload.slackChannelId,
-      slackUserId: payload.slackUserId,
+      slackTeamId: resolvedPayload.slackTeamId,
+      slackChannelId: resolvedPayload.slackChannelId,
+      slackUserId: resolvedPayload.slackUserId,
       mappingStatus: attribution.mappingStatus,
-      textLength: payload.text.length,
-      hasAiRequestAuditId: Boolean(payload.aiRequestAuditId),
+      textLength: text.length,
+      hasAiRequestAuditId: Boolean(resolvedPayload.aiRequestAuditId),
     },
     "Resolved Slack AI request attribution",
   );
 
   switch (attribution.mappingStatus) {
     case "UNKNOWN_WORKSPACE":
-      await handleUnknownWorkspace(payload);
+      await handleUnknownWorkspace(resolvedPayload);
       return;
 
     case "UNMAPPED":
-      await handleUnmappedChannel(payload, attribution);
+      await handleUnmappedChannel(resolvedPayload, attribution);
       return;
 
     case "MAPPED":
-      await handleMappedChannel(payload, attribution);
+      await handleMappedChannel(resolvedPayload, attribution, text);
       return;
 
     default: {
@@ -92,6 +118,28 @@ export async function handleSlackAiRequestJob(
       throw new Error(`Unsupported mapping status: ${exhaustiveCheck}`);
     }
   }
+}
+
+async function resolveSlackRequestText(
+  payload: SlackAiRequestJobPayload,
+): Promise<string | null> {
+  const inlineText = payload.text?.trim();
+
+  if (inlineText) {
+    return inlineText;
+  }
+
+  if (!payload.messageTs) {
+    return null;
+  }
+
+  const { text } = await fetchMessageText({
+    channel: payload.slackChannelId,
+    messageTs: payload.messageTs,
+    ...(payload.threadTs ? { threadTs: payload.threadTs } : {}),
+  });
+
+  return text?.trim() || null;
 }
 
 function mergePayloadAttribution(
@@ -246,6 +294,7 @@ async function handleUnmappedChannel(
 async function handleMappedChannel(
   payload: SlackAiRequestJobPayload,
   attribution: SlackAttribution,
+  requestText: string,
 ): Promise<void> {
   if (!attribution.organizationId) {
     logger.warn(
@@ -261,6 +310,20 @@ async function handleMappedChannel(
   let auditId: string;
 
   if (payload.aiRequestAuditId) {
+    const existingAudit = await getAiRequestAuditById(payload.aiRequestAuditId);
+
+    if (existingAudit?.status === "COMPLETED") {
+      logger.info(
+        {
+          aiRequestAuditId: payload.aiRequestAuditId,
+          slackTeamId: payload.slackTeamId,
+          slackChannelId: payload.slackChannelId,
+        },
+        "Skipping duplicate Slack AI request for completed audit",
+      );
+      return;
+    }
+
     auditId = payload.aiRequestAuditId;
     await markAiRequestProcessing(auditId, {
       clientId: attribution.clientId,
@@ -304,7 +367,7 @@ async function handleMappedChannel(
         },
         {
           role: "user",
-          content: payload.text,
+          content: requestText,
         },
       ],
       metadata: {

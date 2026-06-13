@@ -36,7 +36,7 @@ vi.mock("@/lib/ai/requests", () => ({
   markAiRequestCanceled: mockMarkAiRequestCanceled,
 }));
 
-vi.mock("@/lib/jobs", () => ({
+vi.mock("@/lib/jobs/queue", () => ({
   enqueueJob: mockEnqueueJob,
 }));
 
@@ -273,18 +273,14 @@ describe("handleSlackInteractiveAction", () => {
     });
   });
 
-  it("assign_once recovers Slack text, enqueues, and updates assignment message", async () => {
+  it("assign_once enqueues metadata-only resume job and updates assignment message", async () => {
     await handleSlackInteractiveAction(
       buildPayload("assignment_assign_once", "ASSIGN_ONCE", {
         state: buildSelectionState(),
       }),
     );
 
-    expect(mockFetchMessageText).toHaveBeenCalledWith({
-      channel: CHANNEL_ID,
-      messageTs: "333.444",
-      threadTs: "111.222",
-    });
+    expect(mockFetchMessageText).not.toHaveBeenCalled();
     expect(mockCreateMapping).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "ASSIGN_ONCE",
@@ -296,12 +292,20 @@ describe("handleSlackInteractiveAction", () => {
     expect(mockEnqueueJob).toHaveBeenCalledWith(
       "slack.ai_request",
       expect.objectContaining({
-        text: RECOVERED_TEXT,
         aiRequestAuditId: AUDIT_ID,
         clientId: CLIENT_ID,
         projectId: PROJECT_ID,
         workflowTypeId: WORKFLOW_ID,
+        messageTs: "333.444",
       }),
+      expect.objectContaining({
+        idempotencyKey: `slack:ai_request:audit:${AUDIT_ID}`,
+      }),
+    );
+    expect(mockEnqueueJob).toHaveBeenCalledWith(
+      "slack.ai_request",
+      expect.not.objectContaining({ text: expect.any(String) }),
+      expect.any(Object),
     );
     expect(mockUpdateMessage).toHaveBeenCalledWith({
       channel: CHANNEL_ID,
@@ -332,12 +336,13 @@ describe("handleSlackInteractiveAction", () => {
     });
   });
 
-  it("assign_internal enqueues null attribution and updates assignment message", async () => {
+  it("assign_internal enqueues metadata-only resume job and updates assignment message", async () => {
     await handleSlackInteractiveAction(
       buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     expect(mockCreateMapping).not.toHaveBeenCalled();
+    expect(mockFetchMessageText).not.toHaveBeenCalled();
     expect(mockEnqueueJob).toHaveBeenCalledWith(
       "slack.ai_request",
       expect.objectContaining({
@@ -345,7 +350,10 @@ describe("handleSlackInteractiveAction", () => {
         projectId: null,
         workflowTypeId: null,
         mappingStatus: "MAPPED",
-        text: RECOVERED_TEXT,
+        messageTs: "333.444",
+      }),
+      expect.objectContaining({
+        idempotencyKey: `slack:ai_request:audit:${AUDIT_ID}`,
       }),
     );
     expect(mockUpdateMessage).toHaveBeenCalledWith({
@@ -366,15 +374,18 @@ describe("handleSlackInteractiveAction", () => {
     expect(mockEnqueueJob).not.toHaveBeenCalled();
   });
 
-  it("does not enqueue when Slack message recovery fails", async () => {
-    mockFetchMessageText.mockResolvedValue({ text: null });
+  it("does not enqueue when original audit is missing Slack metadata", async () => {
+    mockGetAudit.mockResolvedValue({
+      ...auditRecord,
+      slackMessageTs: null,
+    });
 
     await handleSlackInteractiveAction(
       buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
+    expect(mockFetchMessageText).not.toHaveBeenCalled();
     expect(mockEnqueueJob).not.toHaveBeenCalled();
-    expect(mockUpdateMessage).not.toHaveBeenCalled();
     expect(mockPostMessage).toHaveBeenCalled();
   });
 

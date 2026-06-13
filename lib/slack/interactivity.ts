@@ -1,7 +1,8 @@
 import { getAiRequestAuditById, markAiRequestCanceled } from "@/lib/ai/requests";
 import { db } from "@/lib/db";
-import { enqueueJob } from "@/lib/jobs";
+import { enqueueJob } from "@/lib/jobs/queue";
 import { logger } from "@/lib/logger";
+import type { SlackInteractivityJobPayload } from "@/lib/queue/types";
 import {
   buildUnmappedChannelAssignmentBlocks,
   parseAssignmentSelectValue,
@@ -12,7 +13,6 @@ import {
   type SlackAttribution,
 } from "@/lib/slack/attribution";
 import {
-  fetchMessageText,
   postMessage,
   SlackClientError,
   updateMessage,
@@ -517,40 +517,25 @@ async function resumeOriginalRequest(input: {
     return false;
   }
 
-  const { text } = await fetchMessageText({
-    channel: audit.slackChannelId,
-    messageTs: audit.slackMessageTs,
-    threadTs: audit.slackThreadTs,
-  });
-
-  if (!text) {
-    logger.warn(
-      {
-        originalRequestId: audit.id,
-        slackTeamId: audit.slackTeamId,
-        slackChannelId: audit.slackChannelId,
-        hasSlackThreadTs: Boolean(audit.slackThreadTs),
-      },
-      "Could not recover original Slack message text",
-    );
-    await notifyMessageRecoveryFailure(input);
-    return false;
-  }
-
-  await enqueueJob("slack.ai_request", {
-    organizationId: attribution.organizationId ?? audit.organizationId,
-    slackTeamId: audit.slackTeamId,
-    slackChannelId: audit.slackChannelId,
-    slackUserId: audit.slackUserId,
-    text,
-    threadTs: audit.slackThreadTs ?? audit.slackMessageTs,
-    messageTs: audit.slackMessageTs,
-    clientId: attribution.clientId,
-    projectId: attribution.projectId,
-    workflowTypeId: attribution.workflowTypeId,
-    mappingStatus: "MAPPED",
-    aiRequestAuditId: audit.id,
-  });
+  await enqueueJob(
+    "slack.ai_request",
+    {
+      organizationId: attribution.organizationId ?? audit.organizationId,
+      slackTeamId: audit.slackTeamId,
+      slackChannelId: audit.slackChannelId,
+      slackUserId: audit.slackUserId,
+      ...(audit.slackThreadTs ? { threadTs: audit.slackThreadTs } : {}),
+      messageTs: audit.slackMessageTs,
+      clientId: attribution.clientId,
+      projectId: attribution.projectId,
+      workflowTypeId: attribution.workflowTypeId,
+      mappingStatus: "MAPPED",
+      aiRequestAuditId: audit.id,
+    },
+    {
+      idempotencyKey: `slack:ai_request:audit:${audit.id}`,
+    },
+  );
 
   return true;
 }
@@ -561,6 +546,9 @@ async function resumeOriginalRequest(input: {
  */
 export async function handleSlackInteractiveAction(
   payload: SlackInteractionPayload,
+  options?: {
+    selectedState?: SelectedAssignmentState;
+  },
 ): Promise<void> {
   const action = payload.actions?.[0];
 
@@ -589,7 +577,8 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
-  const selectedState = extractSelectedAssignmentState(payload);
+  const selectedState =
+    options?.selectedState ?? extractSelectedAssignmentState(payload);
 
   if (isAssignmentSelectAction(action.action_id)) {
     if (!selectedState.originalRequestId) {
@@ -771,4 +760,88 @@ export async function handleSlackInteractiveAction(
         : ASSIGNMENT_STATUS_MESSAGES.assignOnce,
     );
   }
+}
+
+export function buildSlackInteractivityJobPayload(
+  payload: SlackInteractionPayload,
+): SlackInteractivityJobPayload | null {
+  const action = payload.actions?.[0];
+  const slackTeamId = payload.team?.id;
+  const slackChannelId = payload.channel?.id;
+  const slackUserId = payload.user?.id;
+
+  if (!action || !slackTeamId || !slackChannelId || !slackUserId) {
+    return null;
+  }
+
+  const selected = extractSelectedAssignmentState(payload);
+
+  return {
+    actionId: action.action_id,
+    slackTeamId,
+    slackChannelId,
+    ...(payload.channel?.name ? { slackChannelName: payload.channel.name } : {}),
+    slackUserId,
+    ...(payload.message?.ts ? { messageTs: payload.message.ts } : {}),
+    ...(payload.message?.thread_ts
+      ? { threadTs: payload.message.thread_ts }
+      : {}),
+    ...(action.value ? { actionValue: action.value } : {}),
+    originalRequestId: selected.originalRequestId,
+    selectedClientId: selected.clientId,
+    selectedProjectId: selected.projectId,
+    selectedWorkflowTypeId: selected.workflowTypeId,
+  };
+}
+
+export function buildInteractivityIdempotencyKey(
+  job: SlackInteractivityJobPayload,
+): string {
+  const messageTs = job.messageTs ?? "no-message";
+  const selectionTail = [
+    job.actionValue ?? "",
+    job.originalRequestId ?? "",
+    job.selectedClientId ?? "",
+    job.selectedProjectId ?? "",
+    job.selectedWorkflowTypeId ?? "",
+  ].join(":");
+
+  return `slack:interactivity:${job.slackTeamId}:${job.slackChannelId}:${messageTs}:${job.actionId}:${selectionTail}`;
+}
+
+function buildInteractionPayloadFromJob(
+  job: SlackInteractivityJobPayload,
+): SlackInteractionPayload {
+  return {
+    type: "block_actions",
+    team: { id: job.slackTeamId },
+    user: { id: job.slackUserId },
+    channel: {
+      id: job.slackChannelId,
+      ...(job.slackChannelName ? { name: job.slackChannelName } : {}),
+    },
+    message: {
+      ...(job.messageTs ? { ts: job.messageTs } : {}),
+      ...(job.threadTs ? { thread_ts: job.threadTs } : {}),
+    },
+    actions: [
+      {
+        action_id: job.actionId,
+        ...(job.actionValue ? { value: job.actionValue } : {}),
+      },
+    ],
+  };
+}
+
+export async function handleSlackInteractivityJob(
+  job: SlackInteractivityJobPayload,
+): Promise<void> {
+  await handleSlackInteractiveAction(buildInteractionPayloadFromJob(job), {
+    selectedState: {
+      originalRequestId: job.originalRequestId ?? null,
+      clientId: job.selectedClientId ?? null,
+      projectId: job.selectedProjectId ?? null,
+      workflowTypeId: job.selectedWorkflowTypeId ?? null,
+    },
+  });
 }

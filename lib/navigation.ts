@@ -5,6 +5,7 @@ import {
   Hash,
   Layers3,
   LayoutDashboard,
+  ListTodo,
   ShieldCheck,
 } from "lucide-react";
 
@@ -39,6 +40,12 @@ export const dashboardNavigation: DashboardNavItem[] = [
     label: "Slack",
     description: "Channel mapping and install status",
     icon: Hash,
+  },
+  {
+    href: "/jobs",
+    label: "Jobs",
+    description: "Durable background queue visibility",
+    icon: ListTodo,
   },
   {
     href: "/settings/privacy",

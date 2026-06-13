@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { enqueueJob } from "@/lib/jobs/queue";
 import { logger } from "@/lib/logger";
 import {
-  handleSlackInteractiveAction,
+  buildInteractivityIdempotencyKey,
+  buildSlackInteractivityJobPayload,
   isSupportedInteractiveAction,
   parseSlackInteractivePayload,
 } from "@/lib/slack/interactivity";
@@ -15,9 +17,9 @@ export const runtime = "nodejs";
  * Slack interactive action endpoint (Block Kit button clicks).
  *
  * Slack requires a fast HTTP 2xx acknowledgment, typically within 3 seconds.
- * This route verifies the signature, parses the payload, schedules lightweight
- * async handling, and returns immediately. No LiteLLM or provider calls happen
- * in this request lifecycle.
+ * This route verifies the signature, enqueues a durable background job, and
+ * returns immediately. No LiteLLM or provider calls happen in this request
+ * lifecycle.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -60,19 +62,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  setImmediate(() => {
-    void handleSlackInteractiveAction(payload).catch((error: unknown) => {
-      logger.error(
-        {
-          err: error,
-          actionId: action.action_id,
-          slackTeamId: payload.team?.id,
-          slackUserId: payload.user?.id,
-          slackChannelId: payload.channel?.id,
-        },
-        "Slack interactive action handler failed",
-      );
-    });
+  const jobPayload = buildSlackInteractivityJobPayload(payload);
+
+  if (!jobPayload) {
+    logger.warn(
+      {
+        route: "/api/slack/interactivity",
+        actionId: action.action_id,
+      },
+      "Could not build Slack interactivity job payload",
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  await enqueueJob("slack.interactivity", jobPayload, {
+    idempotencyKey: buildInteractivityIdempotencyKey(jobPayload),
   });
 
   return NextResponse.json({ ok: true });

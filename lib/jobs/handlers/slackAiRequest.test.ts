@@ -42,6 +42,7 @@ vi.mock("@/lib/ai/requests", () => ({
   markAiRequestCompleted: mockMarkAiRequestCompleted,
   markAiRequestFailed: mockMarkAiRequestFailed,
   createAiUsageEvent: mockCreateAiUsageEvent,
+  getAiRequestAuditById: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/litellm/client", () => ({

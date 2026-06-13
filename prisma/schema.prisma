@@ -41,6 +41,13 @@ enum AiRequestStatus {
   FAILED
 }
 
+enum BackgroundJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 model Organization {
   id                   String                       @id @default(cuid())
   name                 String
@@ -303,4 +310,26 @@ model AiUsageEvent {
   @@index([occurredAt])
   @@index([externalLiteLlmRequestId])
   @@index([slackTeamId, slackChannelId])
+}
+
+/// Durable background job queue stored in the app database.
+/// Payloads must contain metadata only — never prompt or response text.
+model BackgroundJob {
+  id             String              @id @default(cuid())
+  type           String
+  status         BackgroundJobStatus @default(QUEUED)
+  payloadJson    Json
+  attempts       Int                 @default(0)
+  maxAttempts    Int                 @default(3)
+  runAfter       DateTime            @default(now())
+  lockedAt       DateTime?
+  lockedBy       String?
+  lastError      String?
+  idempotencyKey String?             @unique
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([status, runAfter])
+  @@index([type])
+  @@index([createdAt])
 }

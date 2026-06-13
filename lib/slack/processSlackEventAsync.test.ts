@@ -48,14 +48,20 @@ describe("processSlackEventAsync", () => {
     );
 
     expect(mockEnqueueJob).toHaveBeenCalledTimes(1);
-    expect(mockEnqueueJob).toHaveBeenCalledWith("slack.ai_request", {
-      slackTeamId: "T_TEST",
-      slackChannelId: "C_TEST",
-      slackUserId: "U_TEST",
-      text: "What is our spend this month?",
-      threadTs: "1717891199.000050",
-      messageTs: "1717891200.000100",
-    });
+    expect(mockEnqueueJob).toHaveBeenCalledWith(
+      "slack.ai_request",
+      {
+        slackTeamId: "T_TEST",
+        slackChannelId: "C_TEST",
+        slackUserId: "U_TEST",
+        threadTs: "1717891199.000050",
+        messageTs: "1717891200.000100",
+      },
+      {
+        idempotencyKey:
+          "slack:event:T_TEST:C_TEST:1717891200.000100",
+      },
+    );
   });
 
   it("enqueues app_mention events", async () => {
@@ -73,7 +79,10 @@ describe("processSlackEventAsync", () => {
       "slack.ai_request",
       expect.objectContaining({
         slackTeamId: "T_TEST",
-        text: "hello bot",
+        messageTs: "1717891200.000200",
+      }),
+      expect.objectContaining({
+        idempotencyKey: "slack:event:T_TEST:C_TEST:1717891200.000200",
       }),
     );
   });
@@ -95,6 +104,9 @@ describe("processSlackEventAsync", () => {
     expect(mockEnqueueJob).toHaveBeenCalledWith(
       "slack.ai_request",
       expect.objectContaining({ slackTeamId: "T_AUTH" }),
+      expect.objectContaining({
+        idempotencyKey: "slack:event:T_AUTH:C_TEST:1717891200.000300",
+      }),
     );
   });
 
@@ -180,6 +192,9 @@ describe("processSlackEventAsync", () => {
     expect(mockEnqueueJob).toHaveBeenCalledWith(
       "slack.ai_request",
       expect.not.objectContaining({ organizationId: expect.anything() }),
+      expect.objectContaining({
+        idempotencyKey: "slack:event:T_TEST:C_UNKNOWN:1717891200.000400",
+      }),
     );
   });
 

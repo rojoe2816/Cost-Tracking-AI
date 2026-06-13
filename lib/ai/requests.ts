@@ -146,6 +146,7 @@ export async function getAiRequestAuditById(id: string) {
       projectId: true,
       workflowTypeId: true,
       userId: true,
+      status: true,
     },
   });
 }
