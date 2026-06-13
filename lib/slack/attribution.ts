@@ -86,6 +86,13 @@ export async function createOrUpdateSlackChannelMapping(input: {
   channelType?: "channel" | "group" | "im" | "mpim" | string;
 }): Promise<SlackAttribution> {
   if (input.mode === "ASSIGN_ONCE") {
+    await validateAttributionOwnership({
+      organizationId: input.organizationId,
+      clientId: input.clientId ?? null,
+      projectId: input.projectId ?? null,
+      workflowTypeId: input.workflowTypeId ?? null,
+    });
+
     return buildOneRequestAttribution(input);
   }
 
@@ -113,6 +120,13 @@ export async function createOrUpdateSlackChannelMapping(input: {
   // the current request. When channelType is omitted we allow mapping because
   // public/private channels are the common case; explicit "im"/"mpim" opts out.
   if (isDirectOrGroupDm(input.channelType)) {
+    await validateAttributionOwnership({
+      organizationId: input.organizationId,
+      clientId: input.clientId ?? null,
+      projectId: input.projectId ?? null,
+      workflowTypeId: input.workflowTypeId ?? null,
+    });
+
     logger.info(
       {
         organizationId: input.organizationId,
@@ -226,6 +240,7 @@ async function validateAttributionOwnership(input: {
       where: {
         id: input.projectId,
         organizationId: input.organizationId,
+        ...(input.clientId ? { clientId: input.clientId } : {}),
       },
       select: {
         id: true,
@@ -233,7 +248,7 @@ async function validateAttributionOwnership(input: {
     });
 
     if (!project) {
-      throw new Error("Project does not belong to organization");
+      throw new Error("Project does not belong to organization or client");
     }
   }
 

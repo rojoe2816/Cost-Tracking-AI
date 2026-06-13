@@ -1,5 +1,6 @@
 "use client";
 
+import { format } from "date-fns";
 import { useMemo, useState } from "react";
 
 import {
@@ -7,6 +8,7 @@ import {
   deleteSlackMappingAction,
   updateSlackMappingAction,
 } from "@/app/(dashboard)/slack/actions";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,21 @@ const noticeMessages: Record<string, string> = {
   updated: "Mapping updated successfully.",
   deleted: "Mapping deleted successfully.",
 };
+
+function formatDateTime(value: Date | string): string {
+  return format(new Date(value), "MMM d, yyyy h:mm a");
+}
+
+function getMappingStatus(mapping: MappingRow): {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+} {
+  if (mapping.clientId) {
+    return { label: "Mapped", variant: "default" };
+  }
+
+  return { label: "Needs attribution", variant: "secondary" };
+}
 
 function SelectField({
   id,
@@ -144,14 +161,21 @@ export function SlackMappingManager({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          {data.workspace ? (
-            <div className="rounded-2xl bg-secondary/70 p-4">
-              <p className="font-medium text-foreground">
-                {data.workspace.slackTeamName ?? "Slack workspace"}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                Team ID: {data.workspace.slackTeamId}
-              </p>
+          {data.workspaces.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {data.workspaces.map((workspace) => (
+                <div key={workspace.id} className="rounded-2xl bg-secondary/70 p-4">
+                  <p className="font-medium text-foreground">
+                    {workspace.slackTeamName ?? "Slack workspace"}
+                  </p>
+                  <p className="mt-2 font-mono text-xs text-muted-foreground">
+                    Team ID: {workspace.slackTeamId}
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Updated {formatDateTime(workspace.updatedAt)}
+                  </p>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="rounded-2xl bg-secondary/70 p-4 text-muted-foreground">
@@ -178,53 +202,81 @@ export function SlackMappingManager({
               Connect a workspace before managing channel mappings.
             </p>
           ) : data.mappings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No channel mappings yet. Add one manually below.
-            </p>
+            <div className="rounded-2xl bg-secondary/70 p-4 text-sm text-muted-foreground">
+              No Slack channels mapped yet. Mention Slate in a Slack channel to start
+              attribution.
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Slack Channel ID</TableHead>
-                  <TableHead>Slack Channel Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Workspace</TableHead>
+                  <TableHead>Channel</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Project</TableHead>
                   <TableHead>Default Workflow Type</TableHead>
+                  <TableHead>Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.mappings.map((mapping) => (
-                  <TableRow key={mapping.id}>
-                    <TableCell className="font-mono text-xs">
-                      {mapping.slackChannelId}
-                    </TableCell>
-                    <TableCell>{mapping.slackChannelName ?? "—"}</TableCell>
-                    <TableCell>{mapping.client?.name ?? "—"}</TableCell>
-                    <TableCell>{mapping.project?.name ?? "—"}</TableCell>
-                    <TableCell>
-                      {mapping.defaultWorkflowType?.name ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditingMapping(mapping)}
-                        >
-                          Edit
-                        </Button>
-                        <form action={deleteSlackMappingAction}>
-                          <input type="hidden" name="mappingId" value={mapping.id} />
-                          <Button type="submit" variant="destructive" size="sm">
-                            Delete
+                {data.mappings.map((mapping) => {
+                  const status = getMappingStatus(mapping);
+
+                  return (
+                    <TableRow key={mapping.id}>
+                      <TableCell>
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium text-foreground">
+                          {mapping.slackWorkspace.slackTeamName ?? "Slack workspace"}
+                        </div>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {mapping.slackWorkspace.slackTeamId}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>{mapping.slackChannelName ?? "Unnamed channel"}</div>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {mapping.slackChannelId}
+                        </div>
+                      </TableCell>
+                      <TableCell>{mapping.client?.name ?? "Internal / no client"}</TableCell>
+                      <TableCell>{mapping.project?.name ?? "Not set"}</TableCell>
+                      <TableCell>
+                        {mapping.defaultWorkflowType?.name ?? "Not set"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <div>{formatDateTime(mapping.updatedAt)}</div>
+                        <div>Created {formatDateTime(mapping.createdAt)}</div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingMapping(mapping)}
+                          >
+                            Edit
                           </Button>
-                        </form>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          <form action={deleteSlackMappingAction}>
+                            <input
+                              type="hidden"
+                              name="mappingId"
+                              value={mapping.id}
+                            />
+                            <Button type="submit" variant="destructive" size="sm">
+                              Delete
+                            </Button>
+                          </form>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

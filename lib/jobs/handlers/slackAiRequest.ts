@@ -174,30 +174,70 @@ async function handleUnmappedChannel(
     ...(payload.messageTs ? { slackMessageTs: payload.messageTs } : {}),
   });
 
-  const clients = await db.client.findMany({
-    where: {
-      organizationId: attribution.organizationId,
-    },
-    select: {
-      id: true,
-      name: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  // TODO: Complete client/project select menu handling in Slack interactivity.
-  // TODO: Add dynamic project selection after client selection.
+  const [clients, projects, workflowTypes] = await Promise.all([
+    db.client.findMany({
+      where: {
+        organizationId: attribution.organizationId,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.project.findMany({
+      where: {
+        organizationId: attribution.organizationId,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        name: true,
+        clientId: true,
+        client: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.workflowType.findMany({
+      where: {
+        organizationId: attribution.organizationId,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
   const blocks = buildUnmappedChannelAssignmentBlocks({
     clients,
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      clientId: project.clientId,
+      clientName: project.client.name,
+    })),
+    workflowTypes,
     originalRequestId: audit.id,
+    slackTeamId: payload.slackTeamId,
+    slackChannelId: payload.slackChannelId,
   });
 
   await postMessage({
     channel: payload.slackChannelId,
-    text: "This channel is not mapped to a client/project yet. How should this AI usage be assigned?",
+    text: "Slate needs attribution before this AI request can be processed.",
     blocks,
     ...slackThreadOptions(payload),
   });

@@ -4,6 +4,17 @@ const mockGetAudit = vi.hoisted(() => vi.fn());
 const mockEnqueueJob = vi.hoisted(() => vi.fn());
 const mockCreateMapping = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestCanceled = vi.hoisted(() => vi.fn());
+const mockDb = vi.hoisted(() => ({
+  client: {
+    findMany: vi.fn(),
+  },
+  project: {
+    findMany: vi.fn(),
+  },
+  workflowType: {
+    findMany: vi.fn(),
+  },
+}));
 const mockFetchMessageText = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ text: "Recovered original prompt" }),
 );
@@ -29,6 +40,10 @@ vi.mock("@/lib/jobs", () => ({
   enqueueJob: mockEnqueueJob,
 }));
 
+vi.mock("@/lib/db", () => ({
+  db: mockDb,
+}));
+
 vi.mock("@/lib/slack/attribution", () => ({
   createOrUpdateSlackChannelMapping: mockCreateMapping,
 }));
@@ -50,7 +65,10 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import {
+  extractSelectedAssignmentState,
   extractSelectedClientId,
+  extractSelectedProjectId,
+  extractSelectedWorkflowTypeId,
   handleSlackInteractiveAction,
   parseActionValue,
   parseSlackInteractivePayload,
@@ -62,6 +80,9 @@ const CHANNEL_ID = "C_TEST";
 const USER_ID = "U_TEST";
 const ASSIGNMENT_MESSAGE_TS = "777.0001";
 const RECOVERED_TEXT = "Recovered original prompt";
+const CLIENT_ID = "client_1";
+const PROJECT_ID = "project_1";
+const WORKFLOW_ID = "workflow_1";
 
 const auditRecord = {
   id: AUDIT_ID,
@@ -91,6 +112,51 @@ function buildPayload(actionId: string, mode: string, extra: Record<string, unkn
       },
     ],
     ...extra,
+  };
+}
+
+function buildSelectValue(
+  kind: "CLIENT" | "PROJECT" | "WORKFLOW",
+  entityId: string,
+) {
+  return JSON.stringify({
+    originalRequestId: AUDIT_ID,
+    kind,
+    entityId,
+  });
+}
+
+function buildSelectionState(
+  input: {
+    clientId?: string;
+    projectId?: string;
+    workflowTypeId?: string;
+  } = {},
+) {
+  return {
+    values: {
+      assignment_client: {
+        assignment_select_client: {
+          selected_option: {
+            value: buildSelectValue("CLIENT", input.clientId ?? CLIENT_ID),
+          },
+        },
+      },
+      assignment_project: {
+        assignment_select_project: {
+          selected_option: {
+            value: buildSelectValue("PROJECT", input.projectId ?? PROJECT_ID),
+          },
+        },
+      },
+      assignment_workflow: {
+        assignment_select_workflow: {
+          selected_option: {
+            value: buildSelectValue("WORKFLOW", input.workflowTypeId ?? WORKFLOW_ID),
+          },
+        },
+      },
+    },
   };
 }
 
@@ -130,8 +196,8 @@ describe("extractSelectedClientId", () => {
     const clientId = extractSelectedClientId({
       state: {
         values: {
-          client_assignment: {
-            select_client: {
+          assignment_client: {
+            assignment_select_client: {
               selected_option: { value: "client_1" },
             },
           },
@@ -140,6 +206,24 @@ describe("extractSelectedClientId", () => {
     });
 
     expect(clientId).toBe("client_1");
+  });
+});
+
+describe("extractSelectedAssignmentState", () => {
+  it("reads client, project, workflow, and audit id from encoded state values", () => {
+    const payload = {
+      state: buildSelectionState(),
+    };
+
+    expect(extractSelectedClientId(payload)).toBe(CLIENT_ID);
+    expect(extractSelectedProjectId(payload)).toBe(PROJECT_ID);
+    expect(extractSelectedWorkflowTypeId(payload)).toBe(WORKFLOW_ID);
+    expect(extractSelectedAssignmentState(payload)).toEqual({
+      originalRequestId: AUDIT_ID,
+      clientId: CLIENT_ID,
+      projectId: PROJECT_ID,
+      workflowTypeId: WORKFLOW_ID,
+    });
   });
 });
 
@@ -152,16 +236,30 @@ describe("handleSlackInteractiveAction", () => {
     mockFetchMessageText.mockResolvedValue({ text: RECOVERED_TEXT });
     mockCreateMapping.mockResolvedValue({
       organizationId: "org_1",
-      clientId: "client_1",
-      projectId: null,
-      workflowTypeId: null,
+      clientId: CLIENT_ID,
+      projectId: PROJECT_ID,
+      workflowTypeId: WORKFLOW_ID,
       mappingStatus: "MAPPED",
     });
+    mockDb.client.findMany.mockResolvedValue([
+      { id: CLIENT_ID, name: "Acme Dental" },
+    ]);
+    mockDb.project.findMany.mockResolvedValue([
+      {
+        id: PROJECT_ID,
+        name: "SEO Retainer",
+        clientId: CLIENT_ID,
+        client: { name: "Acme Dental" },
+      },
+    ]);
+    mockDb.workflowType.findMany.mockResolvedValue([
+      { id: WORKFLOW_ID, name: "Client Update" },
+    ]);
   });
 
-  it("cancel_assignment does not fetch original message or enqueue", async () => {
+  it("assignment_cancel does not fetch original message or enqueue", async () => {
     await handleSlackInteractiveAction(
-      buildPayload("cancel_assignment", "CANCEL"),
+      buildPayload("assignment_cancel", "CANCEL"),
     );
 
     expect(mockFetchMessageText).not.toHaveBeenCalled();
@@ -177,16 +275,8 @@ describe("handleSlackInteractiveAction", () => {
 
   it("assign_once recovers Slack text, enqueues, and updates assignment message", async () => {
     await handleSlackInteractiveAction(
-      buildPayload("assign_once", "ASSIGN_ONCE", {
-        state: {
-          values: {
-            client_assignment: {
-              select_client: {
-                selected_option: { value: "client_1" },
-              },
-            },
-          },
-        },
+      buildPayload("assignment_assign_once", "ASSIGN_ONCE", {
+        state: buildSelectionState(),
       }),
     );
 
@@ -196,13 +286,21 @@ describe("handleSlackInteractiveAction", () => {
       threadTs: "111.222",
     });
     expect(mockCreateMapping).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "ASSIGN_ONCE" }),
+      expect.objectContaining({
+        mode: "ASSIGN_ONCE",
+        clientId: CLIENT_ID,
+        projectId: PROJECT_ID,
+        workflowTypeId: WORKFLOW_ID,
+      }),
     );
     expect(mockEnqueueJob).toHaveBeenCalledWith(
       "slack.ai_request",
       expect.objectContaining({
         text: RECOVERED_TEXT,
         aiRequestAuditId: AUDIT_ID,
+        clientId: CLIENT_ID,
+        projectId: PROJECT_ID,
+        workflowTypeId: WORKFLOW_ID,
       }),
     );
     expect(mockUpdateMessage).toHaveBeenCalledWith({
@@ -214,21 +312,18 @@ describe("handleSlackInteractiveAction", () => {
 
   it("map_channel persists mapping and updates assignment message", async () => {
     await handleSlackInteractiveAction(
-      buildPayload("map_channel", "MAP_CHANNEL", {
-        state: {
-          values: {
-            client_assignment: {
-              select_client: {
-                selected_option: { value: "client_1" },
-              },
-            },
-          },
-        },
+      buildPayload("assignment_map_channel", "MAP_CHANNEL", {
+        state: buildSelectionState(),
       }),
     );
 
     expect(mockCreateMapping).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "MAP_CHANNEL" }),
+      expect.objectContaining({
+        mode: "MAP_CHANNEL",
+        clientId: CLIENT_ID,
+        projectId: PROJECT_ID,
+        workflowTypeId: WORKFLOW_ID,
+      }),
     );
     expect(mockUpdateMessage).toHaveBeenCalledWith({
       channel: CHANNEL_ID,
@@ -239,7 +334,7 @@ describe("handleSlackInteractiveAction", () => {
 
   it("assign_internal enqueues null attribution and updates assignment message", async () => {
     await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
+      buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     expect(mockCreateMapping).not.toHaveBeenCalled();
@@ -264,7 +359,7 @@ describe("handleSlackInteractiveAction", () => {
     mockGetAudit.mockResolvedValue(null);
 
     await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
+      buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     expect(mockFetchMessageText).not.toHaveBeenCalled();
@@ -275,7 +370,7 @@ describe("handleSlackInteractiveAction", () => {
     mockFetchMessageText.mockResolvedValue({ text: null });
 
     await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
+      buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     expect(mockEnqueueJob).not.toHaveBeenCalled();
@@ -287,7 +382,7 @@ describe("handleSlackInteractiveAction", () => {
     mockUpdateMessage.mockRejectedValue(new Error("Slack update failed"));
 
     await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
+      buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     expect(mockEnqueueJob).toHaveBeenCalled();
@@ -298,7 +393,7 @@ describe("handleSlackInteractiveAction", () => {
 
   it("does not log recovered Slack message text", async () => {
     await handleSlackInteractiveAction(
-      buildPayload("assign_internal", "ASSIGN_INTERNAL"),
+      buildPayload("assignment_internal", "ASSIGN_INTERNAL"),
     );
 
     const loggedPayload = JSON.stringify([
@@ -307,5 +402,94 @@ describe("handleSlackInteractiveAction", () => {
       ...mockLogger.error.mock.calls,
     ]);
     expect(loggedPayload).not.toContain(RECOVERED_TEXT);
+  });
+
+  it("client select refreshes assignment UI without fetching Slack text or enqueueing", async () => {
+    await handleSlackInteractiveAction({
+      type: "block_actions",
+      team: { id: TEAM_ID },
+      user: { id: USER_ID },
+      channel: { id: CHANNEL_ID, name: "general" },
+      message: { ts: ASSIGNMENT_MESSAGE_TS },
+      actions: [
+        {
+          action_id: "assignment_select_client",
+          selected_option: {
+            value: buildSelectValue("CLIENT", CLIENT_ID),
+          },
+        },
+      ],
+      state: buildSelectionState({ clientId: CLIENT_ID }),
+    });
+
+    expect(mockFetchMessageText).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+    expect(mockCreateMapping).not.toHaveBeenCalled();
+    expect(mockUpdateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: CHANNEL_ID,
+        ts: ASSIGNMENT_MESSAGE_TS,
+        text: "Slate needs attribution before this AI request can be processed.",
+        blocks: expect.any(Array),
+      }),
+    );
+  });
+
+  it("missing client selection refreshes assignment UI with a safe validation message", async () => {
+    await handleSlackInteractiveAction(
+      buildPayload("assignment_assign_once", "ASSIGN_ONCE"),
+    );
+
+    expect(mockCreateMapping).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+    expect(mockUpdateMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blocks: expect.arrayContaining([
+          expect.objectContaining({
+            type: "section",
+            text: expect.objectContaining({
+              text: expect.stringContaining("Choose a client before using"),
+            }),
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("project selection can infer the owning client for assign once", async () => {
+    await handleSlackInteractiveAction(
+      buildPayload("assignment_assign_once", "ASSIGN_ONCE", {
+        state: {
+          values: {
+            assignment_project: {
+              assignment_select_project: {
+                selected_option: {
+                  value: buildSelectValue("PROJECT", PROJECT_ID),
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(mockCreateMapping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: CLIENT_ID,
+        projectId: PROJECT_ID,
+      }),
+    );
+  });
+
+  it("still supports the earlier local assign_once action id", async () => {
+    await handleSlackInteractiveAction(
+      buildPayload("assign_once", "ASSIGN_ONCE", {
+        state: buildSelectionState(),
+      }),
+    );
+
+    expect(mockCreateMapping).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "ASSIGN_ONCE" }),
+    );
   });
 });

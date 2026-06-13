@@ -5,6 +5,7 @@ const mockDb = vi.hoisted(() => ({
     findUnique: vi.fn(),
   },
   slackWorkspace: {
+    findMany: vi.fn(),
     findFirst: vi.fn(),
   },
   slackChannelMapping: {
@@ -48,6 +49,7 @@ const MAPPING_ID = "map_acme";
 const CLIENT_ID = "client_acme";
 const PROJECT_ID = "project_seo";
 const WORKFLOW_ID = "workflow_client_update";
+const NOW = new Date("2026-06-12T12:00:00.000Z");
 
 describe("getSlackMappingPageData", () => {
   beforeEach(() => {
@@ -55,11 +57,15 @@ describe("getSlackMappingPageData", () => {
   });
 
   it("returns the seeded C_ACME mapping with related attribution metadata", async () => {
-    mockDb.slackWorkspace.findFirst.mockResolvedValue({
-      id: WORKSPACE_ID,
-      slackTeamId: TEAM_ID,
-      slackTeamName: "Demo Slack Workspace",
-    });
+    mockDb.slackWorkspace.findMany.mockResolvedValue([
+      {
+        id: WORKSPACE_ID,
+        slackTeamId: TEAM_ID,
+        slackTeamName: "Demo Slack Workspace",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
     mockDb.slackChannelMapping.findMany.mockResolvedValue([
       {
         id: MAPPING_ID,
@@ -68,6 +74,13 @@ describe("getSlackMappingPageData", () => {
         clientId: CLIENT_ID,
         projectId: PROJECT_ID,
         defaultWorkflowTypeId: WORKFLOW_ID,
+        createdAt: NOW,
+        updatedAt: NOW,
+        slackWorkspace: {
+          id: WORKSPACE_ID,
+          slackTeamId: TEAM_ID,
+          slackTeamName: "Demo Slack Workspace",
+        },
         client: { id: CLIENT_ID, name: "Acme Dental" },
         project: { id: PROJECT_ID, name: "SEO Retainer" },
         defaultWorkflowType: { id: WORKFLOW_ID, name: "Client Update" },
@@ -88,11 +101,27 @@ describe("getSlackMappingPageData", () => {
         id: WORKSPACE_ID,
         slackTeamId: TEAM_ID,
         slackTeamName: "Demo Slack Workspace",
+        createdAt: NOW.toISOString(),
+        updatedAt: NOW.toISOString(),
       },
+      workspaces: [
+        {
+          id: WORKSPACE_ID,
+          slackTeamId: TEAM_ID,
+          slackTeamName: "Demo Slack Workspace",
+          createdAt: NOW.toISOString(),
+          updatedAt: NOW.toISOString(),
+        },
+      ],
       mappings: [
         expect.objectContaining({
           slackChannelId: "C_ACME",
           slackChannelName: "client-acme-seo",
+          slackWorkspace: {
+            id: WORKSPACE_ID,
+            slackTeamId: TEAM_ID,
+            slackTeamName: "Demo Slack Workspace",
+          },
           client: { id: CLIENT_ID, name: "Acme Dental" },
           project: { id: PROJECT_ID, name: "SEO Retainer" },
           defaultWorkflowType: { id: WORKFLOW_ID, name: "Client Update" },
@@ -107,11 +136,15 @@ describe("getSlackMappingPageData", () => {
   });
 
   it("does not include C_UNMAPPED unless a mapping row exists", async () => {
-    mockDb.slackWorkspace.findFirst.mockResolvedValue({
-      id: WORKSPACE_ID,
-      slackTeamId: TEAM_ID,
-      slackTeamName: "Demo Slack Workspace",
-    });
+    mockDb.slackWorkspace.findMany.mockResolvedValue([
+      {
+        id: WORKSPACE_ID,
+        slackTeamId: TEAM_ID,
+        slackTeamName: "Demo Slack Workspace",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
     mockDb.slackChannelMapping.findMany.mockResolvedValue([
       {
         id: MAPPING_ID,
@@ -120,6 +153,13 @@ describe("getSlackMappingPageData", () => {
         clientId: CLIENT_ID,
         projectId: PROJECT_ID,
         defaultWorkflowTypeId: WORKFLOW_ID,
+        createdAt: NOW,
+        updatedAt: NOW,
+        slackWorkspace: {
+          id: WORKSPACE_ID,
+          slackTeamId: TEAM_ID,
+          slackTeamName: "Demo Slack Workspace",
+        },
         client: { id: CLIENT_ID, name: "Acme Dental" },
         project: { id: PROJECT_ID, name: "SEO Retainer" },
         defaultWorkflowType: { id: WORKFLOW_ID, name: "Client Update" },

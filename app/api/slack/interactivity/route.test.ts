@@ -113,7 +113,7 @@ describe("POST /api/slack/interactivity", () => {
     expect(mockHandleAction).not.toHaveBeenCalled();
   });
 
-  it("returns 200 and schedules handler for cancel_assignment", async () => {
+  it("returns 200 and schedules handler for assignment_cancel", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const rawBody = buildFormBody({
       type: "block_actions",
@@ -122,7 +122,7 @@ describe("POST /api/slack/interactivity", () => {
       channel: { id: "C_TEST" },
       actions: [
         {
-          action_id: "cancel_assignment",
+          action_id: "assignment_cancel",
           value: JSON.stringify({
             originalRequestId: "audit_123",
             mode: "CANCEL",

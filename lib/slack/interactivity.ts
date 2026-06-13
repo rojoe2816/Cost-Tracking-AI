@@ -1,6 +1,12 @@
 import { getAiRequestAuditById, markAiRequestCanceled } from "@/lib/ai/requests";
+import { db } from "@/lib/db";
 import { enqueueJob } from "@/lib/jobs";
 import { logger } from "@/lib/logger";
+import {
+  buildUnmappedChannelAssignmentBlocks,
+  parseAssignmentSelectValue,
+  SLACK_ASSIGNMENT_ACTION_IDS,
+} from "@/lib/slack/blocks";
 import {
   createOrUpdateSlackChannelMapping,
   type SlackAttribution,
@@ -22,6 +28,9 @@ export type SlackInteractionPayload = {
   actions?: Array<{
     action_id: string;
     value?: string;
+    selected_option?: {
+      value?: string;
+    };
   }>;
   state?: {
     values?: Record<string, Record<string, unknown>>;
@@ -33,7 +42,34 @@ type ParsedActionValue = {
   mode: string;
 };
 
+type AssignmentReferenceData = {
+  clients: Array<{ id: string; name: string }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    clientId: string;
+    clientName: string | null;
+  }>;
+  workflowTypes: Array<{ id: string; name: string }>;
+};
+
+type SelectedAssignmentState = {
+  originalRequestId: string | null;
+  clientId: string | null;
+  projectId: string | null;
+  workflowTypeId: string | null;
+};
+
 const SUPPORTED_ACTION_IDS = new Set([
+  SLACK_ASSIGNMENT_ACTION_IDS.selectClient,
+  SLACK_ASSIGNMENT_ACTION_IDS.selectProject,
+  SLACK_ASSIGNMENT_ACTION_IDS.selectWorkflow,
+  SLACK_ASSIGNMENT_ACTION_IDS.assignOnce,
+  SLACK_ASSIGNMENT_ACTION_IDS.mapChannel,
+  SLACK_ASSIGNMENT_ACTION_IDS.assignInternal,
+  SLACK_ASSIGNMENT_ACTION_IDS.cancel,
+  // Backwards compatibility for local scripts/tests that used the initial IDs.
+  "select_client",
   "assign_once",
   "map_channel",
   "assign_internal",
@@ -41,6 +77,10 @@ const SUPPORTED_ACTION_IDS = new Set([
 ]);
 
 const ACTION_ID_TO_MODE: Record<string, string> = {
+  [SLACK_ASSIGNMENT_ACTION_IDS.assignOnce]: "ASSIGN_ONCE",
+  [SLACK_ASSIGNMENT_ACTION_IDS.mapChannel]: "MAP_CHANNEL",
+  [SLACK_ASSIGNMENT_ACTION_IDS.assignInternal]: "ASSIGN_INTERNAL",
+  [SLACK_ASSIGNMENT_ACTION_IDS.cancel]: "CANCEL",
   assign_once: "ASSIGN_ONCE",
   map_channel: "MAP_CHANNEL",
   assign_internal: "ASSIGN_INTERNAL",
@@ -51,11 +91,14 @@ const MESSAGE_RECOVERY_FAILURE_TEXT =
   "I could not recover the original Slack message. Please send the request again.";
 
 const ASSIGNMENT_STATUS_MESSAGES = {
-  assign_once: "Assigned this request once. Processing...",
-  map_channel: "Channel mapped. Processing...",
-  assign_internal: "Assigned as internal/no client. Processing...",
-  cancel_assignment: "Canceled. No AI usage was recorded.",
+  assignOnce: "Assigned this request once. Processing...",
+  mapChannel: "Channel mapped. Processing...",
+  assignInternal: "Assigned as internal/no client. Processing...",
+  cancel: "Canceled. No AI usage was recorded.",
 } as const;
+
+const ASSIGNMENT_PROMPT_TEXT =
+  "Slate needs attribution before this AI request can be processed.";
 
 export function parseSlackInteractivePayload(rawBody: string):
   | { ok: true; payload: SlackInteractionPayload }
@@ -109,39 +152,103 @@ export function isSupportedInteractiveAction(actionId: string | undefined) {
   return Boolean(actionId && SUPPORTED_ACTION_IDS.has(actionId));
 }
 
-/**
- * Reads the selected client from Block Kit `state.values`.
- *
- * TODO: Expand when client/project select menus are finalized, including
- * dynamic project selection after a client is chosen through Slack
- * interactivity.
- */
 export function extractSelectedClientId(
   payload: SlackInteractionPayload,
 ): string | null {
-  const selectState = payload.state?.values?.client_assignment?.select_client;
+  return extractSelectedAssignmentState(payload).clientId;
+}
 
-  if (
-    typeof selectState === "object" &&
-    selectState !== null &&
-    "selected_option" in selectState
-  ) {
-    const selectedOption = (
-      selectState as { selected_option?: { value?: string } }
-    ).selected_option;
+export function extractSelectedProjectId(
+  payload: SlackInteractionPayload,
+): string | null {
+  return extractSelectedAssignmentState(payload).projectId;
+}
 
-    if (selectedOption?.value) {
-      return selectedOption.value;
+export function extractSelectedWorkflowTypeId(
+  payload: SlackInteractionPayload,
+): string | null {
+  return extractSelectedAssignmentState(payload).workflowTypeId;
+}
+
+export function extractSelectedAssignmentState(
+  payload: SlackInteractionPayload,
+): SelectedAssignmentState {
+  const selected: SelectedAssignmentState = {
+    originalRequestId: null,
+    clientId: null,
+    projectId: null,
+    workflowTypeId: null,
+  };
+
+  for (const actionGroup of Object.values(payload.state?.values ?? {})) {
+    for (const [actionId, actionState] of Object.entries(actionGroup)) {
+      applySelectedOptionValue(selected, actionState, actionId);
     }
   }
 
-  return null;
+  const currentAction = payload.actions?.[0];
+
+  if (currentAction?.selected_option) {
+    applySelectedOptionValue(
+      selected,
+      { selected_option: currentAction.selected_option },
+      currentAction.action_id,
+    );
+  }
+
+  return selected;
 }
 
-export function extractSelectedProjectId(): string | null {
-  // TODO: Add project extraction once project dropdown is wired after client
-  // selection.
-  return null;
+function applySelectedOptionValue(
+  selected: SelectedAssignmentState,
+  actionState: unknown,
+  actionId: string,
+) {
+  if (
+    typeof actionState !== "object" ||
+    actionState === null ||
+    !("selected_option" in actionState)
+  ) {
+    return;
+  }
+
+  const selectedOption = (
+    actionState as { selected_option?: { value?: string } }
+  ).selected_option;
+
+  if (!selectedOption?.value) {
+    return;
+  }
+
+  const parsed = parseAssignmentSelectValue(selectedOption.value);
+
+  if (parsed.ok) {
+    selected.originalRequestId = parsed.value.originalRequestId;
+
+    switch (parsed.value.kind) {
+      case "CLIENT":
+        selected.clientId = parsed.value.entityId;
+        return;
+      case "PROJECT":
+        selected.projectId = parsed.value.entityId;
+        return;
+      case "WORKFLOW":
+        selected.workflowTypeId = parsed.value.entityId;
+        return;
+      default: {
+        const exhaustiveCheck: never = parsed.value.kind;
+        throw new Error(`Unsupported assignment select kind: ${exhaustiveCheck}`);
+      }
+    }
+  }
+
+  // Legacy local payloads used the raw client ID as the option value.
+  if (
+    actionId === "select_client" ||
+    actionId === SLACK_ASSIGNMENT_ACTION_IDS.selectClient
+  ) {
+    selected.clientId = selectedOption.value;
+  }
 }
 
 function inferChannelType(channelId: string | undefined): string | undefined {
@@ -162,6 +269,15 @@ function inferChannelType(channelId: string | undefined): string | undefined {
 
 function validateActionMode(actionId: string, mode: string): boolean {
   return ACTION_ID_TO_MODE[actionId] === mode;
+}
+
+function isAssignmentSelectAction(actionId: string): boolean {
+  return (
+    actionId === SLACK_ASSIGNMENT_ACTION_IDS.selectClient ||
+    actionId === SLACK_ASSIGNMENT_ACTION_IDS.selectProject ||
+    actionId === SLACK_ASSIGNMENT_ACTION_IDS.selectWorkflow ||
+    actionId === "select_client"
+  );
 }
 
 async function lookupOriginalRequest(originalRequestId: string) {
@@ -211,6 +327,7 @@ async function notifyMessageRecoveryFailure(input: {
 async function updateAssignmentMessage(
   payload: SlackInteractionPayload,
   text: string,
+  blocks?: ReturnType<typeof buildUnmappedChannelAssignmentBlocks>,
 ): Promise<void> {
   const channel = payload.channel?.id;
   const ts = payload.message?.ts;
@@ -232,6 +349,7 @@ async function updateAssignmentMessage(
       channel,
       ts,
       text,
+      ...(blocks ? { blocks } : {}),
     });
   } catch (error) {
     logger.error(
@@ -243,6 +361,138 @@ async function updateAssignmentMessage(
       "Failed to update assignment Slack message",
     );
   }
+}
+
+async function loadAssignmentReferenceData(
+  organizationId: string,
+): Promise<AssignmentReferenceData> {
+  const [clients, projects, workflowTypes] = await Promise.all([
+    db.client.findMany({
+      where: {
+        organizationId,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.project.findMany({
+      where: {
+        organizationId,
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        name: true,
+        clientId: true,
+        client: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+    db.workflowType.findMany({
+      where: {
+        organizationId,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
+
+  return {
+    clients,
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      clientId: project.clientId,
+      clientName: project.client.name,
+    })),
+    workflowTypes,
+  };
+}
+
+function normalizeSelectedAssignment(
+  selected: SelectedAssignmentState,
+  references: AssignmentReferenceData,
+): SelectedAssignmentState {
+  let selectedClientId = references.clients.some(
+    (client) => client.id === selected.clientId,
+  )
+    ? selected.clientId
+    : null;
+
+  const selectedProject = references.projects.find(
+    (project) => project.id === selected.projectId,
+  );
+
+  if (!selectedClientId && selectedProject) {
+    selectedClientId = selectedProject.clientId;
+  }
+
+  const selectedProjectId =
+    selectedProject &&
+    (!selectedClientId || selectedProject.clientId === selectedClientId)
+      ? selectedProject.id
+      : null;
+
+  const selectedWorkflowTypeId = references.workflowTypes.some(
+    (workflowType) => workflowType.id === selected.workflowTypeId,
+  )
+    ? selected.workflowTypeId
+    : null;
+
+  return {
+    originalRequestId: selected.originalRequestId,
+    clientId: selectedClientId,
+    projectId: selectedProjectId,
+    workflowTypeId: selectedWorkflowTypeId,
+  };
+}
+
+async function rebuildAssignmentMessage(input: {
+  payload: SlackInteractionPayload;
+  audit: NonNullable<Awaited<ReturnType<typeof lookupOriginalRequest>>>;
+  selected: SelectedAssignmentState;
+  validationMessage?: string;
+}) {
+  const references = await loadAssignmentReferenceData(input.audit.organizationId);
+  const normalized = normalizeSelectedAssignment(input.selected, references);
+
+  const blocks = buildUnmappedChannelAssignmentBlocks({
+    clients: references.clients,
+    projects: references.projects,
+    workflowTypes: references.workflowTypes,
+    originalRequestId: input.audit.id,
+    slackTeamId: input.audit.slackTeamId,
+    slackChannelId: input.audit.slackChannelId,
+    ...(input.payload.channel?.name
+      ? { slackChannelName: input.payload.channel.name }
+      : {}),
+    selectedClientId: normalized.clientId,
+    selectedProjectId: normalized.projectId,
+    selectedWorkflowTypeId: normalized.workflowTypeId,
+    ...(input.validationMessage
+      ? { validationMessage: input.validationMessage }
+      : {}),
+  });
+
+  await updateAssignmentMessage(input.payload, ASSIGNMENT_PROMPT_TEXT, blocks);
+
+  return normalized;
 }
 
 async function resumeOriginalRequest(input: {
@@ -322,6 +572,62 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
+  const slackTeamId = payload.team?.id;
+  const slackChannelId = payload.channel?.id;
+  const slackUserId = payload.user?.id;
+
+  if (!slackTeamId || !slackChannelId || !slackUserId) {
+    logger.warn(
+      {
+        actionId: action.action_id,
+        hasTeamId: Boolean(slackTeamId),
+        hasChannelId: Boolean(slackChannelId),
+        hasUserId: Boolean(slackUserId),
+      },
+      "Slack interactive payload missing team, channel, or user",
+    );
+    return;
+  }
+
+  const selectedState = extractSelectedAssignmentState(payload);
+
+  if (isAssignmentSelectAction(action.action_id)) {
+    if (!selectedState.originalRequestId) {
+      logger.warn(
+        {
+          actionId: action.action_id,
+          slackTeamId,
+          slackChannelId,
+        },
+        "Slack assignment select payload missing original request id",
+      );
+      return;
+    }
+
+    const audit = await lookupOriginalRequest(selectedState.originalRequestId);
+
+    if (!audit) {
+      return;
+    }
+
+    await rebuildAssignmentMessage({
+      payload,
+      audit,
+      selected: selectedState,
+    });
+
+    logger.info(
+      {
+        actionId: action.action_id,
+        originalRequestId: audit.id,
+        slackTeamId,
+        slackChannelId,
+      },
+      "Updated Slack assignment UI after select action",
+    );
+    return;
+  }
+
   const parsedValue = parseActionValue(action.value);
 
   if (!parsedValue.ok) {
@@ -346,34 +652,14 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
-  const slackTeamId = payload.team?.id;
-  const slackChannelId = payload.channel?.id;
-  const slackUserId = payload.user?.id;
-
-  if (!slackTeamId || !slackChannelId || !slackUserId) {
-    logger.warn(
-      {
-        actionId: action.action_id,
-        hasTeamId: Boolean(slackTeamId),
-        hasChannelId: Boolean(slackChannelId),
-        hasUserId: Boolean(slackUserId),
-      },
-      "Slack interactive payload missing team, channel, or user",
-    );
-    return;
-  }
-
-  if (action.action_id === "cancel_assignment") {
+  if (parsedValue.value.mode === "CANCEL") {
     const audit = await lookupOriginalRequest(parsedValue.value.originalRequestId);
 
     if (audit) {
       await markAiRequestCanceled(audit.id);
     }
 
-    await updateAssignmentMessage(
-      payload,
-      ASSIGNMENT_STATUS_MESSAGES.cancel_assignment,
-    );
+    await updateAssignmentMessage(payload, ASSIGNMENT_STATUS_MESSAGES.cancel);
 
     logger.info(
       {
@@ -393,11 +679,9 @@ export async function handleSlackInteractiveAction(
     return;
   }
 
-  const selectedClientId = extractSelectedClientId(payload);
-  const selectedProjectId = extractSelectedProjectId();
   const channelType = inferChannelType(slackChannelId);
 
-  if (action.action_id === "assign_internal") {
+  if (parsedValue.value.mode === "ASSIGN_INTERNAL") {
     const resumed = await resumeOriginalRequest({
       audit,
       fallbackChannelId: slackChannelId,
@@ -413,14 +697,20 @@ export async function handleSlackInteractiveAction(
     if (resumed) {
       await updateAssignmentMessage(
         payload,
-        ASSIGNMENT_STATUS_MESSAGES.assign_internal,
+        ASSIGNMENT_STATUS_MESSAGES.assignInternal,
       );
     }
 
     return;
   }
 
-  if (!selectedClientId) {
+  const references = await loadAssignmentReferenceData(audit.organizationId);
+  const normalizedSelection = normalizeSelectedAssignment(
+    selectedState,
+    references,
+  );
+
+  if (!normalizedSelection.clientId) {
     logger.warn(
       {
         actionId: action.action_id,
@@ -430,13 +720,18 @@ export async function handleSlackInteractiveAction(
       },
       "Client selection required for assign_once/map_channel but none was provided",
     );
-    // TODO: Respond in Slack asking the user to choose a client before retrying.
+    await rebuildAssignmentMessage({
+      payload,
+      audit,
+      selected: normalizedSelection,
+      validationMessage:
+        "Choose a client before using Assign once or Map this channel.",
+    });
     return;
   }
 
-  // TODO: Validate selected client/project belong to organization before enqueue.
   const mappingMode =
-    action.action_id === "map_channel" ? "MAP_CHANNEL" : "ASSIGN_ONCE";
+    parsedValue.value.mode === "MAP_CHANNEL" ? "MAP_CHANNEL" : "ASSIGN_ONCE";
 
   const attribution = await createOrUpdateSlackChannelMapping({
     mode: mappingMode,
@@ -444,9 +739,9 @@ export async function handleSlackInteractiveAction(
     slackTeamId,
     slackChannelId,
     ...(payload.channel?.name ? { slackChannelName: payload.channel.name } : {}),
-    clientId: selectedClientId,
-    projectId: selectedProjectId,
-    workflowTypeId: audit.workflowTypeId,
+    clientId: normalizedSelection.clientId,
+    projectId: normalizedSelection.projectId,
+    workflowTypeId: normalizedSelection.workflowTypeId,
     ...(channelType ? { channelType } : {}),
   });
 
@@ -471,9 +766,9 @@ export async function handleSlackInteractiveAction(
   if (resumed) {
     await updateAssignmentMessage(
       payload,
-      action.action_id === "map_channel"
-        ? ASSIGNMENT_STATUS_MESSAGES.map_channel
-        : ASSIGNMENT_STATUS_MESSAGES.assign_once,
+      parsedValue.value.mode === "MAP_CHANNEL"
+        ? ASSIGNMENT_STATUS_MESSAGES.mapChannel
+        : ASSIGNMENT_STATUS_MESSAGES.assignOnce,
     );
   }
 }

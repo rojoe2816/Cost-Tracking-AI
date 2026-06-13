@@ -17,6 +17,12 @@ const mockDb = vi.hoisted(() => ({
   client: {
     findMany: vi.fn(),
   },
+  project: {
+    findMany: vi.fn(),
+  },
+  workflowType: {
+    findMany: vi.fn(),
+  },
 }));
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -99,6 +105,17 @@ describe("handleSlackAiRequestJob", () => {
       externalLiteLlmRequestId: "litellm-req-1",
     });
     mockDb.client.findMany.mockResolvedValue([{ id: "client_1", name: "Client One" }]);
+    mockDb.project.findMany.mockResolvedValue([
+      {
+        id: "project_1",
+        name: "Project One",
+        clientId: "client_1",
+        client: { name: "Client One" },
+      },
+    ]);
+    mockDb.workflowType.findMany.mockResolvedValue([
+      { id: "workflow_1", name: "Client Update" },
+    ]);
   });
 
   it("posts workspace-not-connected message for UNKNOWN_WORKSPACE and skips LiteLLM", async () => {
@@ -147,10 +164,22 @@ describe("handleSlackAiRequestJob", () => {
     );
     expect(mockBuildUnmappedChannelAssignmentBlocks).toHaveBeenCalledWith({
       clients: [{ id: "client_1", name: "Client One" }],
+      projects: [
+        {
+          id: "project_1",
+          name: "Project One",
+          clientId: "client_1",
+          clientName: "Client One",
+        },
+      ],
+      workflowTypes: [{ id: "workflow_1", name: "Client Update" }],
       originalRequestId: "audit_queued",
+      slackTeamId: "T_TEST",
+      slackChannelId: "C_TEST",
     });
     expect(mockPostSlackMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        text: "Slate needs attribution before this AI request can be processed.",
         blocks: [{ type: "section" }],
       }),
     );

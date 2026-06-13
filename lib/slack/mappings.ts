@@ -26,24 +26,34 @@ export async function getDemoOrganization() {
 }
 
 export async function getSlackMappingPageData(organizationId: string) {
-  const [workspace, mappings, clients, projects, workflowTypes] =
+  const [workspaces, mappings, clients, projects, workflowTypes] =
     await Promise.all([
-      db.slackWorkspace.findFirst({
+      db.slackWorkspace.findMany({
         where: { organizationId },
         select: {
           id: true,
           slackTeamId: true,
           slackTeamName: true,
+          createdAt: true,
+          updatedAt: true,
         },
+        orderBy: { updatedAt: "desc" },
       }),
       db.slackChannelMapping.findMany({
         where: { organizationId },
         include: {
+          slackWorkspace: {
+            select: {
+              id: true,
+              slackTeamId: true,
+              slackTeamName: true,
+            },
+          },
           client: { select: { id: true, name: true } },
           project: { select: { id: true, name: true } },
           defaultWorkflowType: { select: { id: true, name: true } },
         },
-        orderBy: { slackChannelId: "asc" },
+        orderBy: { updatedAt: "desc" },
       }),
       db.client.findMany({
         where: { organizationId, status: "ACTIVE" },
@@ -62,9 +72,22 @@ export async function getSlackMappingPageData(organizationId: string) {
       }),
     ]);
 
+  const serializedWorkspaces = workspaces.map((workspace) => ({
+    ...workspace,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+  }));
+
+  const serializedMappings = mappings.map((mapping) => ({
+    ...mapping,
+    createdAt: mapping.createdAt.toISOString(),
+    updatedAt: mapping.updatedAt.toISOString(),
+  }));
+
   return {
-    workspace,
-    mappings,
+    workspace: serializedWorkspaces[0] ?? null,
+    workspaces: serializedWorkspaces,
+    mappings: serializedMappings,
     clients,
     projects,
     workflowTypes,
