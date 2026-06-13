@@ -1,8 +1,8 @@
-# Cost Tracking AI
+# Slate
 
-Production-quality MVP scaffold for an AI job-costing SaaS built for agencies.
-The app is designed to track AI usage by agency, client, project, user,
-workflow, and Slack channel.
+Production-quality MVP scaffold for Slate, an AI job-costing SaaS built for
+agencies. The app is designed to track AI usage by agency, client, project,
+user, workflow, and Slack channel.
 
 ## Stack
 
@@ -314,8 +314,9 @@ real provider keys.
 - LiteLLM owns raw spend logs.
 - The app owns business attribution, revenue, margin, and UX.
 - Prompt/response text is not stored by default.
-- Spend analytics should read LiteLLM spend logs, not duplicate raw rows into
-  app tables.
+- App-facing dashboard and profitability analytics read normalized
+  `AiUsageEvent` facts. Raw LiteLLM spend logs stay in LiteLLM and are used only
+  for reconciliation/provider drill-down when needed.
 
 **Why not a SQL view yet**
 
@@ -323,7 +324,7 @@ A view inside `cost_tracking_ai` cannot select from `litellm` tables without
 `postgres_fdw`, `dblink`, or collapsing into one database with separate
 schemas. That adds operational complexity and is brittle for local/prod.
 
-**Recommended first implementation (Option A)**
+**Future raw-log implementation (Option A)**
 
 Use a separate **read-only analytics connection** to the `litellm` database
 (later: `LITELLM_ANALYTICS_DATABASE_URL`) and normalize rows in TypeScript via

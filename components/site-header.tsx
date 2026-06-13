@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 export function SiteHeader() {
   return (
     <header className="container relative z-10 flex items-center justify-between py-6">
-      <Link href="/" aria-label="Cost Tracking AI home">
+      <Link href="/" aria-label="Slate home">
         <AppLogo />
       </Link>
       <div className="flex items-center gap-3">

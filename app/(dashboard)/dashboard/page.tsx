@@ -32,6 +32,8 @@ import { formatSmallUsd } from "@/lib/db/costs";
 import { getDemoOrganization } from "@/lib/slack/mappings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+export const dynamic = "force-dynamic";
+
 function formatTokenCount(value: number) {
   return Intl.NumberFormat("en-US").format(value);
 }

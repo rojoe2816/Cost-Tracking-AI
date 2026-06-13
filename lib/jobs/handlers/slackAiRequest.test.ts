@@ -114,7 +114,7 @@ describe("handleSlackAiRequestJob", () => {
 
     expect(mockPostSlackMessage).toHaveBeenCalledWith({
       channel: "C_TEST",
-      text: expect.stringContaining("not connected to Cost Tracking AI"),
+      text: expect.stringContaining("not connected to Slate"),
       threadTs: "1111.0001",
     });
     expect(mockSendLiteLlmChatCompletion).not.toHaveBeenCalled();

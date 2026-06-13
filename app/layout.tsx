@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cost Tracking AI",
+  title: "Slate",
   description:
-    "Agency-grade AI job costing for clients, projects, workflows, people, and Slack channels.",
+    "Track AI spend, attribution, and client profitability with Slate.",
 };
 
 export default function RootLayout({

@@ -8,7 +8,7 @@ export function AppLogo() {
       </div>
       <div>
         <div className="flex items-center gap-2">
-          <span className="font-heading text-xl font-semibold">Cost Tracking AI</span>
+          <span className="font-heading text-xl font-semibold">Slate</span>
           <Bot className="h-4 w-4 text-primary" />
         </div>
         <p className="text-sm text-muted-foreground">

@@ -25,7 +25,7 @@ export const dashboardNavigation: DashboardNavItem[] = [
   {
     href: "/clients",
     label: "Clients",
-    description: "Seeded clients and project scope",
+    description: "Revenue, AI spend, and margin",
     icon: Building2,
   },
   {

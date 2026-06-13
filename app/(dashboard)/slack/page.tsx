@@ -5,6 +5,8 @@ import {
   getSlackMappingPageData,
 } from "@/lib/slack/mappings";
 
+export const dynamic = "force-dynamic";
+
 export default async function SlackPage({
   searchParams,
 }: {

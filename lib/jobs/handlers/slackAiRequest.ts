@@ -33,7 +33,7 @@ const SLACK_AI_SYSTEM_PROMPT =
   "You are a helpful assistant responding in Slack. Be concise and clear.";
 
 const UNKNOWN_WORKSPACE_MESSAGE =
-  "This Slack workspace is not connected to Cost Tracking AI yet. Please connect the workspace before using AI cost tracking.";
+  "This Slack workspace is not connected to Slate yet. Please connect the workspace before using Slate.";
 
 const FAILURE_MESSAGE =
   "Sorry, I could not complete that AI request. Please try again or contact an admin if this keeps happening.";
