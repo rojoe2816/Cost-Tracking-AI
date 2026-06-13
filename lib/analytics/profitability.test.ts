@@ -19,9 +19,11 @@ vi.mock("@/lib/db", () => ({
 
 import {
   calculateClientProfitability,
+  getClientRevenueHistoryRows,
   getClientProfitabilityRows,
   getProfitabilityStatus,
   getRevenueMonthForDateRange,
+  getUsageDateRangeForRevenueMonth,
 } from "./profitability";
 
 const BASE_CLIENT = {
@@ -144,12 +146,21 @@ describe("getRevenueMonthForDateRange", () => {
   });
 });
 
+describe("getUsageDateRangeForRevenueMonth", () => {
+  it("builds a local date range for the selected revenue month", () => {
+    const dateRange = getUsageDateRangeForRevenueMonth("2026-07");
+
+    expect(dateRange.from).toEqual(new Date(2026, 6, 1));
+    expect(dateRange.to).toEqual(new Date(2026, 6, 31, 23, 59, 59, 999));
+  });
+});
+
 describe("getClientProfitabilityRows", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns all organization clients with app-owned usage and revenue facts", async () => {
+  it("returns all organization clients with selected-month revenue prefill values", async () => {
     mockDb.client.findMany.mockResolvedValue([
       {
         id: "client_acme",
@@ -175,8 +186,8 @@ describe("getClientProfitabilityRows", () => {
     mockDb.clientRevenue.findMany.mockResolvedValue([
       {
         clientId: "client_acme",
-        revenueUsd: new Decimal(100),
-        estimatedLaborCostUsd: new Decimal(20),
+        revenueUsd: new Decimal(4000),
+        estimatedLaborCostUsd: new Decimal(1200),
       },
     ]);
 
@@ -187,12 +198,12 @@ describe("getClientProfitabilityRows", () => {
         clientId: "client_acme",
         clientName: "Acme Dental",
         projectNames: ["SEO Retainer"],
-        revenueUsd: 100,
+        revenueUsd: 4000,
         aiSpendUsd: 5,
-        estimatedLaborCostUsd: 20,
+        estimatedLaborCostUsd: 1200,
         requestCount: 2,
         totalTokens: 1500,
-        status: "Watch",
+        status: "Healthy",
       }),
       expect.objectContaining({
         clientId: "client_greenline",
@@ -228,5 +239,61 @@ describe("getClientProfitabilityRows", () => {
         },
       }),
     );
+
+    const revenueSelect = mockDb.clientRevenue.findMany.mock.calls[0]?.[0]?.select;
+    expect(revenueSelect).toBeDefined();
+    expect(revenueSelect).not.toHaveProperty("promptText");
+    expect(revenueSelect).not.toHaveProperty("responseText");
+  });
+});
+
+describe("getClientRevenueHistoryRows", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns the latest client revenue rows in updated order without prompt data", async () => {
+    const updatedAt = new Date("2026-06-12T12:00:00.000Z");
+
+    mockDb.clientRevenue.findMany.mockResolvedValue([
+      {
+        id: "revenue_1",
+        clientId: "client_acme",
+        month: "2026-06",
+        revenueUsd: new Decimal(4000),
+        estimatedLaborCostUsd: new Decimal(1200),
+        updatedAt,
+        client: { name: "Acme Dental" },
+      },
+    ]);
+
+    const rows = await getClientRevenueHistoryRows("org_demo", 6);
+
+    expect(rows).toEqual([
+      {
+        id: "revenue_1",
+        clientId: "client_acme",
+        clientName: "Acme Dental",
+        month: "2026-06",
+        revenueUsd: 4000,
+        estimatedLaborCostUsd: 1200,
+        updatedAt,
+      },
+    ]);
+    expect(mockDb.clientRevenue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: "org_demo",
+          projectId: null,
+        },
+        orderBy: [{ updatedAt: "desc" }, { month: "desc" }],
+        take: 6,
+      }),
+    );
+
+    const select = mockDb.clientRevenue.findMany.mock.calls[0]?.[0]?.select;
+    expect(select).toBeDefined();
+    expect(select).not.toHaveProperty("promptText");
+    expect(select).not.toHaveProperty("responseText");
   });
 });

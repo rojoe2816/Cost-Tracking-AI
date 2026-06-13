@@ -1,151 +1,132 @@
 "use server";
 
-import Decimal from "decimal.js";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { db } from "@/lib/db";
+import {
+  clearClientRevenueForOrganization,
+  ClientRevenueWorkflowError,
+  isRevenueMonth,
+  upsertClientRevenueForOrganization,
+  type ClientRevenueErrorCode,
+  type ClientRevenueMutationNotice,
+} from "@/lib/clients/revenue";
 import { getDemoOrganization } from "@/lib/slack/mappings";
-
-class ClientRevenueError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ClientRevenueError";
-  }
-}
 
 function parseRequiredString(
   value: FormDataEntryValue | null,
   label: string,
+  code: ClientRevenueErrorCode,
 ): string {
   if (typeof value !== "string" || !value.trim()) {
-    throw new ClientRevenueError(`${label} is required`);
+    throw new ClientRevenueWorkflowError(code, `${label} is required`);
   }
 
   return value.trim();
 }
 
-function parseMonth(value: FormDataEntryValue | null): string {
-  const month = parseRequiredString(value, "Month");
-
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    throw new ClientRevenueError("Month must use YYYY-MM format");
-  }
-
-  return month;
+function safeMonthFromForm(formData: FormData): string | null {
+  const month = formData.get("month");
+  return isRevenueMonth(month) ? month : null;
 }
 
-function parseUsdValue(
-  value: FormDataEntryValue | null,
-  label: string,
-  options: { required: boolean },
-): string | null {
-  if (typeof value !== "string" || !value.trim()) {
-    if (options.required) {
-      throw new ClientRevenueError(`${label} is required`);
-    }
+function redirectToClients(input: {
+  month?: string | null;
+  notice?: ClientRevenueMutationNotice;
+  error?: ClientRevenueErrorCode;
+}): never {
+  const params = new URLSearchParams();
 
-    return null;
+  if (input.month) {
+    params.set("month", input.month);
   }
 
-  let parsed: Decimal;
-
-  try {
-    parsed = new Decimal(value.trim());
-  } catch {
-    throw new ClientRevenueError(`${label} must be a valid number`);
+  if (input.notice) {
+    params.set("notice", input.notice);
   }
 
-  if (!parsed.isFinite()) {
-    throw new ClientRevenueError(`${label} must be a valid number`);
+  if (input.error) {
+    params.set("error", input.error);
   }
 
-  if (parsed.isNegative()) {
-    throw new ClientRevenueError(`${label} cannot be negative`);
-  }
-
-  return parsed.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+  const queryString = params.toString();
+  redirect(queryString ? `/clients?${queryString}` : "/clients");
 }
 
 async function requireDemoOrganizationId(): Promise<string> {
   const organization = await getDemoOrganization();
 
   if (!organization) {
-    throw new ClientRevenueError("Demo Agency organization not found");
+    throw new ClientRevenueWorkflowError(
+      "organization-not-found",
+      "Demo Agency organization not found",
+    );
   }
 
   return organization.id;
 }
 
 export async function upsertClientRevenueAction(formData: FormData) {
+  const month = safeMonthFromForm(formData);
+
   try {
     const organizationId = await requireDemoOrganizationId();
-    const clientId = parseRequiredString(formData.get("clientId"), "Client");
-    const month = parseMonth(formData.get("month"));
-    const revenueUsd = parseUsdValue(formData.get("revenueUsd"), "Revenue", {
-      required: true,
-    });
-    const estimatedLaborCostUsd = parseUsdValue(
-      formData.get("estimatedLaborCostUsd"),
-      "Estimated labor cost",
-      { required: false },
-    );
+    const estimatedLaborCostUsd = formData.get("estimatedLaborCostUsd");
 
-    if (revenueUsd == null) {
-      throw new ClientRevenueError("Revenue is required");
-    }
-
-    await db.$transaction(async (tx) => {
-      const client = await tx.client.findFirst({
-        where: {
-          id: clientId,
-          organizationId,
-        },
-        select: { id: true },
-      });
-
-      if (!client) {
-        throw new ClientRevenueError("Client does not belong to this organization");
-      }
-
-      const existingRevenue = await tx.clientRevenue.findFirst({
-        where: {
-          organizationId,
-          clientId,
-          projectId: null,
-          month,
-        },
-        select: { id: true },
-      });
-
-      if (existingRevenue) {
-        await tx.clientRevenue.update({
-          where: { id: existingRevenue.id },
-          data: {
-            revenueUsd,
-            estimatedLaborCostUsd,
-          },
-        });
-        return;
-      }
-
-      await tx.clientRevenue.create({
-        data: {
-          organizationId,
-          clientId,
-          projectId: null,
-          month,
-          revenueUsd,
-          estimatedLaborCostUsd,
-        },
-      });
+    const result = await upsertClientRevenueForOrganization({
+      organizationId,
+      clientId: parseRequiredString(
+        formData.get("clientId"),
+        "Client",
+        "client-not-found",
+      ),
+      month: parseRequiredString(formData.get("month"), "Month", "invalid-month"),
+      revenueUsd: parseRequiredString(
+        formData.get("revenueUsd"),
+        "Revenue",
+        "revenue-required",
+      ),
+      estimatedLaborCostUsd:
+        typeof estimatedLaborCostUsd === "string" ? estimatedLaborCostUsd : null,
     });
 
     revalidatePath("/clients");
-    redirect("/clients?notice=revenue-updated");
+    redirectToClients({
+      month,
+      notice: result === "created" ? "revenue-created" : "revenue-updated",
+    });
   } catch (error) {
-    if (error instanceof ClientRevenueError) {
-      redirect(`/clients?error=${encodeURIComponent(error.message)}`);
+    if (error instanceof ClientRevenueWorkflowError) {
+      redirectToClients({ month, error: error.code });
+    }
+
+    throw error;
+  }
+}
+
+export async function clearClientRevenueAction(formData: FormData) {
+  const month = safeMonthFromForm(formData);
+
+  try {
+    const organizationId = await requireDemoOrganizationId();
+    await clearClientRevenueForOrganization({
+      organizationId,
+      clientId: parseRequiredString(
+        formData.get("clientId"),
+        "Client",
+        "client-not-found",
+      ),
+      month: parseRequiredString(formData.get("month"), "Month", "invalid-month"),
+    });
+
+    revalidatePath("/clients");
+    redirectToClients({
+      month,
+      notice: "revenue-cleared",
+    });
+  } catch (error) {
+    if (error instanceof ClientRevenueWorkflowError) {
+      redirectToClients({ month, error: error.code });
     }
 
     throw error;

@@ -1,7 +1,7 @@
 import "server-only";
 
 import Decimal from "decimal.js";
-import { format } from "date-fns";
+import { endOfMonth, format } from "date-fns";
 
 import { db } from "@/lib/db";
 import { microsToUsdDecimal } from "@/lib/db/costs";
@@ -9,6 +9,7 @@ import {
   getDefaultUsageDateRange,
   type UsageDateRange,
 } from "@/lib/analytics/usage";
+import { isRevenueMonth } from "@/lib/clients/revenue";
 
 export type ProfitabilityStatus =
   | "Healthy"
@@ -30,6 +31,16 @@ export interface ClientProfitabilityRow {
   totalTokens: number;
 }
 
+export interface ClientRevenueHistoryRow {
+  id: string;
+  clientId: string;
+  clientName: string;
+  month: string;
+  revenueUsd: number;
+  estimatedLaborCostUsd: number | null;
+  updatedAt: Date;
+}
+
 export interface CalculateClientProfitabilityInput {
   clientId: string;
   clientName: string;
@@ -48,6 +59,21 @@ interface ProfitabilityStatusInput {
 
 export function getRevenueMonthForDateRange(dateRange: UsageDateRange): string {
   return format(dateRange.from, "yyyy-MM");
+}
+
+export function getUsageDateRangeForRevenueMonth(month: string): UsageDateRange {
+  if (!isRevenueMonth(month)) {
+    throw new Error("Invalid revenue month");
+  }
+
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  const from = new Date(year, monthNumber - 1, 1);
+
+  return {
+    from,
+    to: endOfMonth(from),
+  };
 }
 
 export function getProfitabilityStatus({
@@ -232,4 +258,41 @@ export async function getClientProfitabilityRows(
       totalTokens: usage?.totalTokens ?? 0,
     });
   });
+}
+
+export async function getClientRevenueHistoryRows(
+  organizationId: string,
+  limit = 6,
+): Promise<ClientRevenueHistoryRow[]> {
+  const revenueRows = await db.clientRevenue.findMany({
+    where: {
+      organizationId,
+      projectId: null,
+    },
+    select: {
+      id: true,
+      clientId: true,
+      month: true,
+      revenueUsd: true,
+      estimatedLaborCostUsd: true,
+      updatedAt: true,
+      client: {
+        select: {
+          name: true,
+        },
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { month: "desc" }],
+    take: limit,
+  });
+
+  return revenueRows.map((row) => ({
+    id: row.id,
+    clientId: row.clientId,
+    clientName: row.client.name,
+    month: row.month,
+    revenueUsd: decimalToNumber(row.revenueUsd) ?? 0,
+    estimatedLaborCostUsd: decimalToNumber(row.estimatedLaborCostUsd),
+    updatedAt: row.updatedAt,
+  }));
 }
