@@ -270,6 +270,7 @@ describe("handleSlackInteractiveAction", () => {
       channel: CHANNEL_ID,
       ts: ASSIGNMENT_MESSAGE_TS,
       text: "Canceled. No AI usage was recorded.",
+      slackTeamId: TEAM_ID,
     });
   });
 
@@ -311,6 +312,7 @@ describe("handleSlackInteractiveAction", () => {
       channel: CHANNEL_ID,
       ts: ASSIGNMENT_MESSAGE_TS,
       text: "Assigned this request once. Processing...",
+      slackTeamId: TEAM_ID,
     });
   });
 
@@ -333,6 +335,7 @@ describe("handleSlackInteractiveAction", () => {
       channel: CHANNEL_ID,
       ts: ASSIGNMENT_MESSAGE_TS,
       text: "Channel mapped. Processing...",
+      slackTeamId: TEAM_ID,
     });
   });
 
@@ -360,6 +363,7 @@ describe("handleSlackInteractiveAction", () => {
       channel: CHANNEL_ID,
       ts: ASSIGNMENT_MESSAGE_TS,
       text: "Assigned as internal/no client. Processing...",
+      slackTeamId: TEAM_ID,
     });
   });
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { demoAgency } from "@/lib/demo-agency";
+import { isSlackOAuthConfigured } from "@/lib/slack/oauth";
 import { createOrUpdateSlackChannelMapping } from "@/lib/slack/attribution";
 
 export class SlackMappingError extends Error {
@@ -34,6 +35,10 @@ export async function getSlackMappingPageData(organizationId: string) {
           id: true,
           slackTeamId: true,
           slackTeamName: true,
+          botUserId: true,
+          encryptedBotToken: true,
+          connectedAt: true,
+          disconnectedAt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -73,7 +78,13 @@ export async function getSlackMappingPageData(organizationId: string) {
     ]);
 
   const serializedWorkspaces = workspaces.map((workspace) => ({
-    ...workspace,
+    id: workspace.id,
+    slackTeamId: workspace.slackTeamId,
+    slackTeamName: workspace.slackTeamName,
+    botUserId: workspace.botUserId,
+    isBotConnected: Boolean(workspace.encryptedBotToken),
+    connectedAt: workspace.connectedAt?.toISOString() ?? null,
+    disconnectedAt: workspace.disconnectedAt?.toISOString() ?? null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   }));
@@ -85,6 +96,7 @@ export async function getSlackMappingPageData(organizationId: string) {
   }));
 
   return {
+    oauthConfigured: isSlackOAuthConfigured(),
     workspace: serializedWorkspaces[0] ?? null,
     workspaces: serializedWorkspaces,
     mappings: serializedMappings,

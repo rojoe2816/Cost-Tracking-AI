@@ -159,6 +159,44 @@ These variables are intentionally server-only and are not exposed through
 `.env` is gitignored and must never contain committed real provider keys. The
 `.env.example` placeholders are intentionally fake.
 
+## Slack OAuth setup for Slate
+
+Pilot customers should connect Slack through OAuth instead of manual database scripts.
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps).
+2. Add redirect URL:
+
+```text
+https://<your-ngrok-subdomain>.ngrok-free.app/api/slack/oauth/callback
+```
+
+For local development with ngrok:
+
+```text
+https://your-ngrok-subdomain.ngrok-free.app/api/slack/oauth/callback
+```
+
+3. Set these env vars locally (never commit real values):
+
+```env
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+SLACK_REDIRECT_URI=
+SLACK_SIGNING_SECRET=
+```
+
+4. Start the app and worker:
+
+```bash
+npm run dev
+npm run worker
+```
+
+5. Open `/slack` and click **Connect Slack**.
+6. After OAuth completes, `/slack` should show the connected workspace, team ID, and bot installed status.
+
+Local development scripts such as `scripts/upsert-local-slack-workspace.ts` remain available for seeded/fake workspaces, but OAuth is the preferred pilot path.
+
 ## Docker services
 
 Bring up the local services:

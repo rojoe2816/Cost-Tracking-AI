@@ -320,6 +320,7 @@ async function notifyMessageRecoveryFailure(input: {
   await postMessage({
     channel,
     text: MESSAGE_RECOVERY_FAILURE_TEXT,
+    ...(input.audit.slackTeamId ? { slackTeamId: input.audit.slackTeamId } : {}),
     ...(threadTs ? { threadTs } : {}),
   });
 }
@@ -349,6 +350,7 @@ async function updateAssignmentMessage(
       channel,
       ts,
       text,
+      ...(payload.team?.id ? { slackTeamId: payload.team.id } : {}),
       ...(blocks ? { blocks } : {}),
     });
   } catch (error) {

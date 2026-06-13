@@ -7,7 +7,9 @@ import {
   type IntegrationStatus,
 } from "@/lib/integration-status";
 import { logger } from "@/lib/logger";
+import { decryptSecret } from "@/lib/security/encryption";
 import type { SlackBlock } from "@/lib/slack/blocks";
+import { getEncryptedWorkspaceBotToken } from "@/lib/slack/workspace";
 
 export interface SlackRuntimeConfig {
   status: IntegrationStatus;
@@ -82,7 +84,7 @@ export function createSlackAuthHeaders() {
   };
 }
 
-function assertSlackBotTokenForApi(method: string): string {
+function assertSlackBotTokenFromEnv(method: string): string {
   const token = env.SLACK_BOT_TOKEN?.trim();
 
   if (!token) {
@@ -102,11 +104,27 @@ function assertSlackBotTokenForApi(method: string): string {
   return token;
 }
 
+async function resolveSlackBotToken(
+  method: string,
+  slackTeamId?: string,
+): Promise<string> {
+  if (slackTeamId) {
+    const encryptedToken = await getEncryptedWorkspaceBotToken(slackTeamId);
+
+    if (encryptedToken) {
+      return decryptSecret(encryptedToken);
+    }
+  }
+
+  return assertSlackBotTokenFromEnv(method);
+}
+
 async function callSlackApi<T extends SlackApiResponse>(
   method: string,
   body: Record<string, unknown>,
+  options?: { slackTeamId?: string },
 ): Promise<T> {
-  const botToken = assertSlackBotTokenForApi(method);
+  const botToken = await resolveSlackBotToken(method, options?.slackTeamId);
 
   const response = await fetch(`${SLACK_API_BASE}/${method}`, {
     method: "POST",
@@ -156,18 +174,27 @@ async function callSlackApi<T extends SlackApiResponse>(
   return data;
 }
 
+function slackTeamApiOptions(slackTeamId?: string) {
+  return slackTeamId ? { slackTeamId } : undefined;
+}
+
 export async function postMessage(input: {
   channel: string;
   threadTs?: string;
   text: string;
   blocks?: SlackBlock[];
+  slackTeamId?: string;
 }): Promise<{ ts: string }> {
-  const data = await callSlackApi<SlackApiResponse>("chat.postMessage", {
-    channel: input.channel,
-    text: input.text,
-    ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
-    ...(input.blocks ? { blocks: input.blocks } : {}),
-  });
+  const data = await callSlackApi<SlackApiResponse>(
+    "chat.postMessage",
+    {
+      channel: input.channel,
+      text: input.text,
+      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      ...(input.blocks ? { blocks: input.blocks } : {}),
+    },
+    slackTeamApiOptions(input.slackTeamId),
+  );
 
   if (!data.ts) {
     throw new SlackClientError("Slack chat.postMessage response missing ts", {
@@ -183,13 +210,18 @@ export async function updateMessage(input: {
   ts: string;
   text: string;
   blocks?: SlackBlock[];
+  slackTeamId?: string;
 }): Promise<{ ts: string }> {
-  const data = await callSlackApi<SlackApiResponse>("chat.update", {
-    channel: input.channel,
-    ts: input.ts,
-    text: input.text,
-    ...(input.blocks ? { blocks: input.blocks } : {}),
-  });
+  const data = await callSlackApi<SlackApiResponse>(
+    "chat.update",
+    {
+      channel: input.channel,
+      ts: input.ts,
+      text: input.text,
+      ...(input.blocks ? { blocks: input.blocks } : {}),
+    },
+    slackTeamApiOptions(input.slackTeamId),
+  );
 
   if (!data.ts) {
     throw new SlackClientError("Slack chat.update response missing ts", {
@@ -205,13 +237,18 @@ export async function postEphemeral(input: {
   user: string;
   text: string;
   blocks?: SlackBlock[];
+  slackTeamId?: string;
 }): Promise<{ messageTs?: string }> {
-  const data = await callSlackApi<SlackApiResponse>("chat.postEphemeral", {
-    channel: input.channel,
-    user: input.user,
-    text: input.text,
-    ...(input.blocks ? { blocks: input.blocks } : {}),
-  });
+  const data = await callSlackApi<SlackApiResponse>(
+    "chat.postEphemeral",
+    {
+      channel: input.channel,
+      user: input.user,
+      text: input.text,
+      ...(input.blocks ? { blocks: input.blocks } : {}),
+    },
+    slackTeamApiOptions(input.slackTeamId),
+  );
 
   return {
     ...(data.message_ts ? { messageTs: data.message_ts } : {}),
@@ -243,9 +280,11 @@ export async function fetchMessageText(input: {
   channel: string;
   messageTs: string;
   threadTs?: string | null;
+  slackTeamId?: string;
 }): Promise<{ text: string | null }> {
   const useReplies =
     Boolean(input.threadTs) && input.threadTs !== input.messageTs;
+  const apiOptions = slackTeamApiOptions(input.slackTeamId);
 
   if (useReplies && input.threadTs) {
     const data = await callSlackApi<ConversationsRepliesResponse>(
@@ -255,6 +294,7 @@ export async function fetchMessageText(input: {
         ts: input.threadTs,
         limit: 200,
       },
+      apiOptions,
     );
 
     const message = data.messages?.find((entry) => entry.ts === input.messageTs);
@@ -271,6 +311,7 @@ export async function fetchMessageText(input: {
       inclusive: true,
       limit: 1,
     },
+    apiOptions,
   );
 
   const text = data.messages?.[0]?.text?.trim();

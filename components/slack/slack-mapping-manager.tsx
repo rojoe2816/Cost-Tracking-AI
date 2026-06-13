@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import {
   createSlackMappingAction,
   deleteSlackMappingAction,
+  disconnectSlackWorkspaceAction,
   updateSlackMappingAction,
 } from "@/app/(dashboard)/slack/actions";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,8 @@ const noticeMessages: Record<string, string> = {
   created: "Mapping created successfully.",
   updated: "Mapping updated successfully.",
   deleted: "Mapping deleted successfully.",
+  "slack-connected": "Slack workspace connected to Slate.",
+  "slack-disconnected": "Slack workspace disconnected. Historical usage data was preserved.",
 };
 
 function formatDateTime(value: Date | string): string {
@@ -155,38 +158,80 @@ export function SlackMappingManager({
       ) : null}
 
       <Card className="surface-panel border-0">
-        <CardHeader>
-          <CardTitle className="font-heading text-2xl">
-            Connected Slack workspace
-          </CardTitle>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="font-heading text-2xl">
+              Connect Slack to Slate
+            </CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Slate uses Slack events to attribute AI requests to clients and
+              workflows. No prompt or response text is stored by default.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data.oauthConfigured ? (
+              <>
+                <Button asChild>
+                  <a href="/api/slack/install">
+                    {data.workspace?.isBotConnected ? "Reconnect Slack" : "Connect Slack"}
+                  </a>
+                </Button>
+                {data.workspace ? (
+                  <form action={disconnectSlackWorkspaceAction}>
+                    <Button type="submit" variant="outline">
+                      Disconnect
+                    </Button>
+                  </form>
+                ) : null}
+              </>
+            ) : (
+              <Badge variant="secondary">OAuth not configured</Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {data.workspaces.length > 0 ? (
             <div className="grid gap-3 md:grid-cols-2">
               {data.workspaces.map((workspace) => (
                 <div key={workspace.id} className="rounded-2xl bg-secondary/70 p-4">
-                  <p className="font-medium text-foreground">
-                    {workspace.slackTeamName ?? "Slack workspace"}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium text-foreground">
+                      {workspace.slackTeamName ?? "Slack workspace"}
+                    </p>
+                    <Badge variant={workspace.isBotConnected ? "default" : "secondary"}>
+                      {workspace.isBotConnected ? "Bot installed" : "Disconnected"}
+                    </Badge>
+                  </div>
                   <p className="mt-2 font-mono text-xs text-muted-foreground">
                     Team ID: {workspace.slackTeamId}
                   </p>
+                  {workspace.botUserId ? (
+                    <p className="mt-2 font-mono text-xs text-muted-foreground">
+                      Bot user ID: {workspace.botUserId}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Updated {formatDateTime(workspace.updatedAt)}
+                    {workspace.connectedAt
+                      ? `Connected ${formatDateTime(workspace.connectedAt)}`
+                      : `Updated ${formatDateTime(workspace.updatedAt)}`}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
             <div className="rounded-2xl bg-secondary/70 p-4 text-muted-foreground">
-              No Slack workspace connected yet. For local development, seed or
-              manually create a SlackWorkspace record.
+              No Slack workspace connected yet. Use Connect Slack for pilot installs,
+              or seed a local SlackWorkspace record for development.
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            TODO: Add Slack OAuth install flow later.
-          </p>
+          {!data.oauthConfigured ? (
+            <p className="text-xs text-muted-foreground">
+              Set SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, and SLACK_REDIRECT_URI to
+              enable OAuth install. Local scripts can still upsert workspace rows for
+              development.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 

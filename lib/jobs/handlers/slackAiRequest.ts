@@ -137,6 +137,7 @@ async function resolveSlackRequestText(
     channel: payload.slackChannelId,
     messageTs: payload.messageTs,
     ...(payload.threadTs ? { threadTs: payload.threadTs } : {}),
+    slackTeamId: payload.slackTeamId,
   });
 
   return text?.trim() || null;
@@ -184,7 +185,11 @@ function threadTs(payload: SlackAiRequestJobPayload): string | undefined {
 
 function slackThreadOptions(payload: SlackAiRequestJobPayload) {
   const ts = threadTs(payload);
-  return ts ? { threadTs: ts } : {};
+
+  return {
+    slackTeamId: payload.slackTeamId,
+    ...(ts ? { threadTs: ts } : {}),
+  };
 }
 
 async function handleUnknownWorkspace(

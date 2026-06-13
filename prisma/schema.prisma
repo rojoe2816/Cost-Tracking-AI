@@ -157,15 +157,18 @@ model WorkflowType {
 }
 
 model SlackWorkspace {
-  id              String                @id @default(cuid())
-  organizationId  String
-  slackTeamId     String                @unique
-  slackTeamName   String?
-  botUserId       String?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  channelMappings SlackChannelMapping[]
+  id                String                @id @default(cuid())
+  organizationId    String
+  slackTeamId       String                @unique
+  slackTeamName     String?
+  botUserId         String?
+  encryptedBotToken String?
+  connectedAt       DateTime?
+  disconnectedAt  DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channelMappings   SlackChannelMapping[]
 
   @@index([organizationId])
   @@index([createdAt])

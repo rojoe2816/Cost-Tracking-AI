@@ -15,5 +15,8 @@ console.table({
     : "missing",
   SLACK_BOT_TOKEN: env.SLACK_BOT_TOKEN ? "configured" : "missing",
   SLACK_SIGNING_SECRET: env.SLACK_SIGNING_SECRET ? "configured" : "missing",
+  SLACK_CLIENT_ID: env.SLACK_CLIENT_ID ? "configured" : "missing",
+  SLACK_CLIENT_SECRET: env.SLACK_CLIENT_SECRET ? "configured" : "missing",
+  SLACK_REDIRECT_URI: env.SLACK_REDIRECT_URI ?? "missing",
   QUEUE_ADAPTER: env.QUEUE_ADAPTER ?? (env.NODE_ENV === "test" ? "in-memory" : "postgres"),
 });

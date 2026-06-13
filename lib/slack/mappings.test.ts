@@ -34,6 +34,10 @@ vi.mock("@/lib/slack/attribution", () => ({
   createOrUpdateSlackChannelMapping: mockCreateOrUpdate,
 }));
 
+vi.mock("@/lib/slack/oauth", () => ({
+  isSlackOAuthConfigured: vi.fn().mockReturnValue(true),
+}));
+
 import {
   createManualSlackChannelMapping,
   deleteManualSlackChannelMapping,
@@ -50,6 +54,17 @@ const CLIENT_ID = "client_acme";
 const PROJECT_ID = "project_seo";
 const WORKFLOW_ID = "workflow_client_update";
 const NOW = new Date("2026-06-12T12:00:00.000Z");
+const WORKSPACE_ROW = {
+  id: WORKSPACE_ID,
+  slackTeamId: TEAM_ID,
+  slackTeamName: "Demo Slack Workspace",
+  botUserId: "U_BOT",
+  encryptedBotToken: "encrypted-token",
+  connectedAt: NOW,
+  disconnectedAt: null,
+  createdAt: NOW,
+  updatedAt: NOW,
+};
 
 describe("getSlackMappingPageData", () => {
   beforeEach(() => {
@@ -57,15 +72,7 @@ describe("getSlackMappingPageData", () => {
   });
 
   it("returns the seeded C_ACME mapping with related attribution metadata", async () => {
-    mockDb.slackWorkspace.findMany.mockResolvedValue([
-      {
-        id: WORKSPACE_ID,
-        slackTeamId: TEAM_ID,
-        slackTeamName: "Demo Slack Workspace",
-        createdAt: NOW,
-        updatedAt: NOW,
-      },
-    ]);
+    mockDb.slackWorkspace.findMany.mockResolvedValue([WORKSPACE_ROW]);
     mockDb.slackChannelMapping.findMany.mockResolvedValue([
       {
         id: MAPPING_ID,
@@ -97,10 +104,15 @@ describe("getSlackMappingPageData", () => {
     ]);
 
     await expect(getSlackMappingPageData(ORG_ID)).resolves.toEqual({
+      oauthConfigured: true,
       workspace: {
         id: WORKSPACE_ID,
         slackTeamId: TEAM_ID,
         slackTeamName: "Demo Slack Workspace",
+        botUserId: "U_BOT",
+        isBotConnected: true,
+        connectedAt: NOW.toISOString(),
+        disconnectedAt: null,
         createdAt: NOW.toISOString(),
         updatedAt: NOW.toISOString(),
       },
@@ -109,6 +121,10 @@ describe("getSlackMappingPageData", () => {
           id: WORKSPACE_ID,
           slackTeamId: TEAM_ID,
           slackTeamName: "Demo Slack Workspace",
+          botUserId: "U_BOT",
+          isBotConnected: true,
+          connectedAt: NOW.toISOString(),
+          disconnectedAt: null,
           createdAt: NOW.toISOString(),
           updatedAt: NOW.toISOString(),
         },
@@ -136,15 +152,7 @@ describe("getSlackMappingPageData", () => {
   });
 
   it("does not include C_UNMAPPED unless a mapping row exists", async () => {
-    mockDb.slackWorkspace.findMany.mockResolvedValue([
-      {
-        id: WORKSPACE_ID,
-        slackTeamId: TEAM_ID,
-        slackTeamName: "Demo Slack Workspace",
-        createdAt: NOW,
-        updatedAt: NOW,
-      },
-    ]);
+    mockDb.slackWorkspace.findMany.mockResolvedValue([WORKSPACE_ROW]);
     mockDb.slackChannelMapping.findMany.mockResolvedValue([
       {
         id: MAPPING_ID,

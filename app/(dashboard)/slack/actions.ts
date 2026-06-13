@@ -10,6 +10,7 @@ import {
   SlackMappingError,
   updateManualSlackChannelMapping,
 } from "@/lib/slack/mappings";
+import { disconnectSlackWorkspace } from "@/lib/slack/workspace";
 
 function parseRequiredId(value: FormDataEntryValue | null, label: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -98,6 +99,23 @@ export async function deleteSlackMappingAction(formData: FormData) {
 
     revalidatePath("/slack");
     redirect("/slack?notice=deleted");
+  } catch (error) {
+    if (error instanceof SlackMappingError) {
+      redirect(`/slack?error=${encodeURIComponent(error.message)}`);
+    }
+
+    throw error;
+  }
+}
+
+export async function disconnectSlackWorkspaceAction() {
+  try {
+    const organizationId = await requireDemoOrganizationId();
+
+    await disconnectSlackWorkspace(organizationId);
+
+    revalidatePath("/slack");
+    redirect("/slack?notice=slack-disconnected");
   } catch (error) {
     if (error instanceof SlackMappingError) {
       redirect(`/slack?error=${encodeURIComponent(error.message)}`);

@@ -52,6 +52,9 @@ export const envSchema = z.object({
   LITELLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   SLACK_BOT_TOKEN: z.string().trim().min(1).optional(),
   SLACK_SIGNING_SECRET: z.string().trim().min(1).optional(),
+  SLACK_CLIENT_ID: z.string().trim().min(1).optional(),
+  SLACK_CLIENT_SECRET: z.string().trim().min(1).optional(),
+  SLACK_REDIRECT_URI: z.string().url("SLACK_REDIRECT_URI must be a valid URL").optional(),
   QUEUE_ADAPTER: z.enum(["in-memory", "postgres"]).optional(),
 });
 

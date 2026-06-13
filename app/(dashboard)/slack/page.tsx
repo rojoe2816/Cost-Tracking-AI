@@ -38,7 +38,7 @@ export default async function SlackPage({
       <PageHeader
         eyebrow="Slack"
         title="Slack channel attribution"
-        description="View and manage manual Slack channel mappings for Demo Agency. OAuth install is deferred; local development uses seeded workspace records."
+        description="Connect a Slack workspace to Slate, then map channels to clients, projects, and workflow types."
       />
 
       <SlackMappingManager
