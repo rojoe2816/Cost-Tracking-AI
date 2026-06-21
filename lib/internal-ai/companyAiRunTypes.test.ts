@@ -36,6 +36,9 @@ describe("companyAiRunTypes", () => {
 
   it("includes expected task types and example prompts", () => {
     expect(COMPANY_AI_TASK_TYPES).toContain("project_risk_summary");
-    expect(COMPANY_AI_EXAMPLE_PROMPTS.length).toBeGreaterThanOrEqual(4);
+    expect(COMPANY_AI_EXAMPLE_PROMPTS).toHaveLength(5);
+    expect(COMPANY_AI_EXAMPLE_PROMPTS.map((example) => example.taskType)).toContain(
+      "sales_followup",
+    );
   });
 });

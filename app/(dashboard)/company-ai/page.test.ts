@@ -15,6 +15,7 @@ describe("company-ai page integration", () => {
 
   it("registers the company AI route in dashboard navigation", async () => {
     const { dashboardNavigation } = await import("@/lib/navigation");
+    expect(dashboardNavigation[0]?.href).toBe("/company-ai");
     expect(
       dashboardNavigation.some((item) => item.href === "/company-ai"),
     ).toBe(true);

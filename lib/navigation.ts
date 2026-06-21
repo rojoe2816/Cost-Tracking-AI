@@ -19,16 +19,16 @@ export interface DashboardNavItem {
 
 export const dashboardNavigation: DashboardNavItem[] = [
   {
-    href: "/dashboard",
-    label: "Dashboard",
-    description: "AI usage and gateway health",
-    icon: LayoutDashboard,
-  },
-  {
     href: "/company-ai",
     label: "Company AI",
-    description: "Internal AI workspace",
+    description: "Internal AI demo workspace",
     icon: Sparkles,
+  },
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    description: "Spend and usage overview",
+    icon: LayoutDashboard,
   },
   {
     href: "/clients",
@@ -43,16 +43,16 @@ export const dashboardNavigation: DashboardNavItem[] = [
     icon: Layers3,
   },
   {
-    href: "/slack",
-    label: "Slack",
-    description: "Legacy connector mappings",
-    icon: Hash,
-  },
-  {
     href: "/jobs",
     label: "Jobs",
     description: "Queue and connector operations",
     icon: ListTodo,
+  },
+  {
+    href: "/slack",
+    label: "Slack",
+    description: "Optional connector mappings",
+    icon: Hash,
   },
   {
     href: "/settings/privacy",

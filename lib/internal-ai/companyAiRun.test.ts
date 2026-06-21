@@ -104,4 +104,46 @@ describe("runCompanyAiTask", () => {
       expect(result.value).not.toHaveProperty("responseText");
     }
   });
+
+  it("returns duplicate request errors from the gateway", async () => {
+    mockProcessInternalAiGatewayRequest.mockResolvedValue({
+      ok: false,
+      status: 409,
+      value: {
+        error: {
+          code: "DUPLICATE_SOURCE_APP_REQUEST",
+          message: "Request with this sourceAppRequestId was already processed or is in progress.",
+        },
+      },
+    });
+
+    const result = await runCompanyAiTask(VALID_BODY);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(409);
+      expect(result.value.error.code).toBe("DUPLICATE_SOURCE_APP_REQUEST");
+    }
+  });
+
+  it("returns provider failures from the gateway", async () => {
+    mockProcessInternalAiGatewayRequest.mockResolvedValue({
+      ok: false,
+      status: 500,
+      value: {
+        error: {
+          code: "GATEWAY_PROCESSING_FAILED",
+          message: "LiteLLM unavailable",
+        },
+      },
+    });
+
+    const result = await runCompanyAiTask(VALID_BODY);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(500);
+      expect(result.value.error.code).toBe("GATEWAY_PROCESSING_FAILED");
+    }
+  });
 });
