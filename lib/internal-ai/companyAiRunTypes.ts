@@ -12,24 +12,34 @@ export type CompanyAiTaskType = (typeof COMPANY_AI_TASK_TYPES)[number];
 
 export const COMPANY_AI_EXAMPLE_PROMPTS = [
   {
-    label: "Draft a one-sentence client update.",
+    label: "Client update",
+    hint: "One-sentence client status update",
     taskType: "client_update" as const,
-    input: "Draft a one-sentence client update.",
+    input: "Reply in one short sentence: The client update is ready for review.",
   },
   {
-    label: "Summarize a support issue in one sentence.",
+    label: "Support summary",
+    hint: "One-sentence support triage summary",
     taskType: "support_summary" as const,
-    input: "Summarize a support issue in one sentence.",
+    input: "Reply in one short sentence: Three support tickets were summarized.",
   },
   {
-    label: "Write a short project risk note.",
-    taskType: "project_risk_summary" as const,
-    input: "Write a short project risk note.",
+    label: "Sales follow-up",
+    hint: "One-sentence sales follow-up draft",
+    taskType: "sales_followup" as const,
+    input: "Reply in one short sentence: The sales follow-up email draft is ready.",
   },
   {
-    label: "Generate a short internal research note.",
+    label: "Research note",
+    hint: "One-sentence internal research note",
     taskType: "research_note" as const,
-    input: "Generate a short internal research note.",
+    input: "Reply in one short sentence: The internal research note was generated.",
+  },
+  {
+    label: "Project risk summary",
+    hint: "One-sentence project risk note",
+    taskType: "project_risk_summary" as const,
+    input: "Reply in one short sentence: The project risk summary is ready.",
   },
 ] as const;
 

@@ -19,6 +19,7 @@
     "source-app:key:create": "tsx scripts/create-source-app-key.ts",
     "gateway:test": "tsx scripts/test-internal-ai-gateway.ts",
     "company-ai:integration:test": "node --conditions=react-server --import tsx scripts/run-company-ai-integration-test.ts",
+    "company-ai:e2e:calls": "node --conditions=react-server --import tsx scripts/run-company-ai-e2e-calls.ts",
     "worker": "tsx scripts/run-worker.ts",
     "postinstall": "prisma generate"
   },
