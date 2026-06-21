@@ -69,7 +69,7 @@ docker compose up -d
 
 This starts:
 
-- PostgreSQL 16 on `localhost:5432`
+- PostgreSQL 16 on `localhost:5433` (host port; container listens on 5432)
 - LiteLLM proxy on `localhost:4000`
 
 The Postgres container hosts two databases:
@@ -240,7 +240,7 @@ npm run db:migrate
 If your local `.env` predates this Docker setup, update `DATABASE_URL` to:
 
 ```bash
-postgresql://postgres:postgres@localhost:5432/cost_tracking_ai?schema=public
+postgresql://postgres:postgres@localhost:5433/cost_tracking_ai?schema=public
 ```
 
 ## LiteLLM integration test
