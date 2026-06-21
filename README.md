@@ -4,6 +4,18 @@ Production-quality MVP scaffold for Slate, an AI job-costing SaaS built for
 agencies. The app is designed to track AI usage by agency, client, project,
 user, workflow, and Slack channel.
 
+## Product direction
+
+Slate tracks AI usage, cost, and attribution across internal company AI tools.
+The Slack integration remains available as an optional connector, but the core
+MVP now focuses on routing internal AI app requests through Slate and LiteLLM so
+usage can be attributed to employees, clients, projects, and workflows.
+
+See [docs/internal-ai-platform-pivot.md](./docs/internal-ai-platform-pivot.md) for
+the full architecture pivot, revised phases, and success criteria. Slack OAuth,
+channel mapping, and event routes remain documented below as an optional connector
+path — they are not required for the new internal-portal MVP.
+
 ## Stack
 
 - Next.js 15 with App Router
