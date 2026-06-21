@@ -64,6 +64,8 @@ model Organization {
   privacySettings      OrganizationPrivacySettings?
   aiRequestAudits      AiRequestAudit[]
   aiUsageEvents        AiUsageEvent[]
+  employees            Employee[]
+  aiSourceApps         AiSourceApp[]
 
   @@index([createdAt])
 }
@@ -220,6 +222,47 @@ model ClientRevenue {
   @@index([createdAt])
 }
 
+model Employee {
+  id              String           @id @default(cuid())
+  organizationId  String
+  name            String
+  email           String?
+  department      String?
+  role            String?
+  externalId      String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudits AiRequestAudit[]
+  aiUsageEvents   AiUsageEvent[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([organizationId, email])
+  @@index([organizationId, externalId])
+  @@index([createdAt])
+}
+
+model AiSourceApp {
+  id              String           @id @default(cuid())
+  organizationId  String
+  name            String
+  type            String
+  description     String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudits AiRequestAudit[]
+  aiUsageEvents   AiUsageEvent[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([organizationId, type])
+  @@index([createdAt])
+}
+
 model OrganizationPrivacySettings {
   id                String            @id @default(cuid())
   organizationId    String            @unique
@@ -246,6 +289,10 @@ model AiRequestAudit {
   clientId                 String?
   projectId                String?
   workflowTypeId           String?
+  employeeId               String?
+  sourceAppId              String?
+  taskType                 String?
+  sourceAppRequestId       String?
   promptStored             Boolean         @default(false)
   errorMessage             String?
   createdAt                DateTime        @default(now())
@@ -255,6 +302,8 @@ model AiRequestAudit {
   client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
   project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+  employee                 Employee?       @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  sourceApp                AiSourceApp?    @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
   usageEvents              AiUsageEvent[]
 
   @@index([organizationId])
@@ -262,6 +311,10 @@ model AiRequestAudit {
   @@index([clientId])
   @@index([projectId])
   @@index([workflowTypeId])
+  @@index([organizationId, employeeId])
+  @@index([organizationId, sourceAppId])
+  @@index([organizationId, taskType])
+  @@index([sourceAppRequestId])
   @@index([status])
   @@index([createdAt])
   @@index([externalLiteLlmRequestId])
@@ -295,6 +348,9 @@ model AiUsageEvent {
   clientId                 String?
   projectId                String?
   workflowTypeId           String?
+  employeeId               String?
+  sourceAppId              String?
+  taskType                 String?
   occurredAt               DateTime        @default(now())
   createdAt                DateTime        @default(now())
   organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -302,6 +358,8 @@ model AiUsageEvent {
   client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
   project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+  employee                 Employee?       @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  sourceApp                AiSourceApp?    @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([aiRequestAuditId])
@@ -310,6 +368,9 @@ model AiUsageEvent {
   @@index([clientId])
   @@index([projectId])
   @@index([workflowTypeId])
+  @@index([organizationId, employeeId])
+  @@index([organizationId, sourceAppId])
+  @@index([organizationId, taskType])
   @@index([occurredAt])
   @@index([externalLiteLlmRequestId])
   @@index([slackTeamId, slackChannelId])

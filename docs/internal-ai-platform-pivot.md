@@ -208,7 +208,7 @@ Phase 5A will likely add:
 
 Slack-specific columns (`slackTeamId`, `slackChannelId`, `slackUserId`, etc.) **remain** on existing models. They should be populated for Slack events and left null for internal portal events — Slack fields must not be required for non-Slack usage.
 
-No schema changes are made in this documentation-only step.
+**Phase 5A (complete):** `Employee`, `AiSourceApp`, and nullable attribution fields on `AiRequestAudit` / `AiUsageEvent` are implemented. Backend helpers live in `lib/internal-ai/` and `lib/analytics/internalUsage.ts`. Demo seed data includes employees and source apps for Demo Agency.
 
 ---
 
@@ -232,36 +232,38 @@ The mock portal and AI gateway must not weaken these defaults.
 
 ## 10. Revised phases
 
-### Phase 5A — Source-agnostic usage model
+### Phase 5A — Source-agnostic usage model ✅
 
-**Goal:** Extend schema and types so usage events can be attributed to employees and source apps, not only Slack context.
+**Status:** Complete.
 
-**Files likely touched:** `prisma/schema.prisma`, `lib/analytics/usage.ts`, `lib/analytics/profitability.ts`, seed scripts, privacy tests.
+**Delivered:**
 
-**Completion criteria:**
+- `Employee` and `AiSourceApp` Prisma models (organization-scoped, nullable relations)
+- Nullable `employeeId`, `sourceAppId`, `taskType` on `AiUsageEvent`
+- Nullable `employeeId`, `sourceAppId`, `taskType`, `sourceAppRequestId` on `AiRequestAudit`
+- Demo seed employees and source apps in `prisma/seed.ts`
+- `getInternalAiContextOptions()` in `lib/internal-ai/context.ts`
+- `validateInternalAiAttribution()` in `lib/internal-ai/usageAttribution.ts`
+- Analytics in `lib/analytics/internalUsage.ts`: spend by employee, source app, task type; recent internal usage query
+- Slack backward compatibility preserved (Slack events omit new fields)
 
-- `Employee` and `AiSourceApp` models exist
-- `AiUsageEvent` / `AiRequestAudit` accept employee and source-app references
-- Existing Slack rows and tests still pass
-- Dashboard queries handle null Slack fields and new attribution fields
-
-**Do not break:** Slack integration, existing 176+ tests, LiteLLM reconciliation, profitability math.
+**Do not break:** Slack integration, LiteLLM reconciliation, profitability math, privacy defaults.
 
 ---
 
-### Phase 5B — Mock AI-native company website
+### Phase 5B — Source app authentication and API key hashing
 
-**Goal:** Build `/company-ai` demo portal with selectors, prompt input, run button, response display, and post-task usage summary.
+**Goal:** Authenticate internal apps calling the future gateway (hashed API keys per `AiSourceApp`, encrypted at rest).
 
-**Files likely touched:** `app/(dashboard)/company-ai/` or `app/company-ai/`, new components, demo seed data.
+**Files likely touched:** `lib/security/`, `AiSourceApp` schema extension, auth middleware stubs, tests.
 
 **Completion criteria:**
 
-- User can select employee, client, project, workflow, task type, and model
-- Portal calls the gateway (Phase 5C) or a stub until 5C lands
-- UI shows response and usage summary without storing prompt/response in DB
+- Each registered source app can have credentials
+- Gateway auth rejects unauthenticated or cross-org requests (when gateway lands in 5C)
+- Secrets encrypted at rest using existing encryption helpers
 
-**Do not break:** Existing dashboard, `/clients`, Slack pages.
+**Do not break:** Demo org local dev flow (provide dev bypass or seeded keys).
 
 ---
 
@@ -273,7 +275,7 @@ The mock portal and AI gateway must not weaken these defaults.
 
 **Completion criteria:**
 
-- Gateway creates `AiRequestAudit` + `AiUsageEvent`
+- Gateway creates `AiRequestAudit` + `AiUsageEvent` with employee/source/task attribution
 - LiteLLM called through existing client (no direct provider calls under `app/api`)
 - Response returned to caller; prompt/response not persisted
 - Spend reconciliation hooks work with LiteLLM request ID
@@ -282,11 +284,27 @@ The mock portal and AI gateway must not weaken these defaults.
 
 ---
 
-### Phase 5D — Internal AI usage dashboard
+### Phase 5D — Mock AI-native company website
+
+**Goal:** Build `/company-ai` demo portal with selectors, prompt input, run button, response display, and post-task usage summary.
+
+**Files likely touched:** `app/(dashboard)/company-ai/` or `app/company-ai/`, new components.
+
+**Completion criteria:**
+
+- User can select employee, client, project, workflow, task type, and model
+- Portal calls the Phase 5C gateway
+- UI shows response and usage summary without storing prompt/response in DB
+
+**Do not break:** Existing dashboard, `/clients`, Slack pages.
+
+---
+
+### Phase 5E — Internal AI usage dashboard
 
 **Goal:** Update dashboard and `/clients` to surface employee, source app, and task type dimensions.
 
-**Files likely touched:** `lib/analytics/usage.ts`, `lib/analytics/profitability.ts`, `app/(dashboard)/dashboard/page.tsx`, `app/(dashboard)/clients/page.tsx`.
+**Files likely touched:** `lib/analytics/usage.ts`, `lib/analytics/internalUsage.ts`, dashboard and clients pages.
 
 **Completion criteria:**
 
@@ -296,22 +314,6 @@ The mock portal and AI gateway must not weaken these defaults.
 - Slack-sourced data still appears correctly
 
 **Do not break:** Existing spend-by-client/workflow/source breakdowns.
-
----
-
-### Phase 5E — Source app API keys / authentication
-
-**Goal:** Authenticate internal apps calling the gateway (API keys, signed requests, or org-scoped tokens).
-
-**Files likely touched:** `lib/security/`, `AiSourceApp` model, gateway auth middleware, encryption helpers.
-
-**Completion criteria:**
-
-- Each registered source app has credentials
-- Gateway rejects unauthenticated or cross-org requests
-- Secrets encrypted at rest
-
-**Do not break:** Demo org local dev flow (provide dev bypass or seeded keys).
 
 ---
 
@@ -328,6 +330,12 @@ The mock portal and AI gateway must not weaken these defaults.
 - Slack connector documented as optional parallel path
 
 **Do not break:** Existing Slack OAuth documentation.
+
+---
+
+### Previous phase labels (superseded)
+
+The original pivot doc labeled mock portal as 5B and auth as 5E. Build order is now **5B auth → 5C gateway → 5D mock portal → 5E dashboard**, so backend gateway and credentials exist before the demo UI.
 
 ---
 
@@ -348,13 +356,16 @@ The new MVP is successful when:
 
 ---
 
-## Appendix: Current codebase map (as of Phase 4B)
+## Appendix: Current codebase map (as of Phase 5A)
 
 For implementers referencing what exists today:
 
 | Area | Key paths |
 |---|---|
 | Schema | `prisma/schema.prisma` |
+| Employees / source apps | `Employee`, `AiSourceApp` models; `prisma/seed.ts` |
+| Internal AI helpers | `lib/internal-ai/context.ts`, `lib/internal-ai/usageAttribution.ts` |
+| Internal usage analytics | `lib/analytics/internalUsage.ts` |
 | LiteLLM | `lib/litellm/client.ts` |
 | Usage analytics | `lib/analytics/usage.ts` |
 | Profitability | `lib/analytics/profitability.ts` |
@@ -367,4 +378,4 @@ For implementers referencing what exists today:
 | Slack API | `app/api/slack/events/`, `interactivity/`, `install/`, `oauth/callback/` |
 | Privacy tests | `lib/privacy/metadataOnly.test.ts` |
 
-Test suite: **176 passing tests** after Phase 4B (Slack OAuth install flow).
+Slack remains an optional connector. Internal portal UI (`/company-ai`) and `POST /api/ai/gateway` are planned for Phases 5C–5D.

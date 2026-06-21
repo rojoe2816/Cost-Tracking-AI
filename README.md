@@ -12,9 +12,10 @@ MVP now focuses on routing internal AI app requests through Slate and LiteLLM so
 usage can be attributed to employees, clients, projects, and workflows.
 
 See [docs/internal-ai-platform-pivot.md](./docs/internal-ai-platform-pivot.md) for
-the full architecture pivot, revised phases, and success criteria. Slack OAuth,
-channel mapping, and event routes remain documented below as an optional connector
-path — they are not required for the new internal-portal MVP.
+the full architecture pivot, revised phases, and success criteria. Phase 5A adds
+`Employee` and `AiSourceApp` models plus backend helpers in `lib/internal-ai/`.
+Slack OAuth, channel mapping, and event routes remain documented below as an optional
+connector path — they are not required for the new internal-portal MVP.
 
 ## Stack
 

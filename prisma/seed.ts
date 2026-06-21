@@ -107,6 +107,60 @@ async function main() {
     ),
   );
 
+  await Promise.all(
+    demoAgency.employees.map((employee) =>
+      prisma.employee.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: organization.id,
+            name: employee.name,
+          },
+        },
+        update: {
+          email: employee.email,
+          department: employee.department,
+          role: employee.role,
+          externalId: employee.externalId,
+          isActive: true,
+        },
+        create: {
+          organizationId: organization.id,
+          name: employee.name,
+          email: employee.email,
+          department: employee.department,
+          role: employee.role,
+          externalId: employee.externalId,
+          isActive: true,
+        },
+      }),
+    ),
+  );
+
+  await Promise.all(
+    demoAgency.sourceApps.map((sourceApp) =>
+      prisma.aiSourceApp.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: organization.id,
+            name: sourceApp.name,
+          },
+        },
+        update: {
+          type: sourceApp.type,
+          description: sourceApp.description,
+          isActive: true,
+        },
+        create: {
+          organizationId: organization.id,
+          name: sourceApp.name,
+          type: sourceApp.type,
+          description: sourceApp.description,
+          isActive: true,
+        },
+      }),
+    ),
+  );
+
   await prisma.organizationPrivacySettings.upsert({
     where: {
       organizationId: organization.id,

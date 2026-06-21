@@ -21,3 +21,9 @@ pnpm-debug.log*
 
 # system
 .DS_Store
+
+# local database dumps (never commit)
+cost_tracking_ai_dev_dump.*
+*.dump
+*.backup
+*_dump.zip
