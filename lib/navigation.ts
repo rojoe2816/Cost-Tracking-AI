@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListTodo,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 
 export interface DashboardNavItem {
@@ -22,6 +23,12 @@ export const dashboardNavigation: DashboardNavItem[] = [
     label: "Dashboard",
     description: "AI usage and gateway health",
     icon: LayoutDashboard,
+  },
+  {
+    href: "/company-ai",
+    label: "Company AI",
+    description: "Internal AI workspace",
+    icon: Sparkles,
   },
   {
     href: "/clients",

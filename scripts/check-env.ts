@@ -18,5 +18,8 @@ console.table({
   SLACK_CLIENT_ID: env.SLACK_CLIENT_ID ? "configured" : "missing",
   SLACK_CLIENT_SECRET: env.SLACK_CLIENT_SECRET ? "configured" : "missing",
   SLACK_REDIRECT_URI: env.SLACK_REDIRECT_URI ?? "missing",
+  MOCK_COMPANY_SOURCE_APP_KEY: env.MOCK_COMPANY_SOURCE_APP_KEY
+    ? "configured"
+    : "missing",
   QUEUE_ADAPTER: env.QUEUE_ADAPTER ?? (env.NODE_ENV === "test" ? "in-memory" : "postgres"),
 });

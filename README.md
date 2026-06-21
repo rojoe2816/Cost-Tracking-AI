@@ -252,6 +252,28 @@ curl -X POST http://localhost:3000/api/ai/gateway \
 
 Bearer credentials: create with `npm run source-app:key:create`. Prompt/response text is returned to the caller but **not** persisted. Duplicate `sourceAppRequestId` returns **409 Conflict**.
 
+## Company AI workspace
+
+The demo internal AI portal lives at `/company-ai`. It calls Slate through a server-side proxy:
+
+```text
+/company-ai UI → POST /api/company-ai/run → Slate gateway → LiteLLM
+```
+
+Configure a local server-side key (never expose this to the browser):
+
+```bash
+npm run source-app:key:create -- --source-app-name "Mock Company AI Portal"
+# add to local .env:
+# MOCK_COMPANY_SOURCE_APP_KEY="slate_app_sk_..."
+```
+
+Run a tiny real integration check (uses LiteLLM; keep spend minimal):
+
+```bash
+npm run company-ai:integration:test
+```
+
 ## Docker services
 
 Bring up the local services:

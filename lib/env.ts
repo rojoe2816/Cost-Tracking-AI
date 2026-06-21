@@ -55,6 +55,7 @@ export const envSchema = z.object({
   SLACK_CLIENT_ID: z.string().trim().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().trim().min(1).optional(),
   SLACK_REDIRECT_URI: z.string().url("SLACK_REDIRECT_URI must be a valid URL").optional(),
+  MOCK_COMPANY_SOURCE_APP_KEY: z.string().trim().min(1).optional(),
   QUEUE_ADAPTER: z.enum(["in-memory", "postgres"]).optional(),
 });
 
