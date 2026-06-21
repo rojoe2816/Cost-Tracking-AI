@@ -264,45 +264,54 @@ The mock portal and AI gateway must not weaken these defaults.
 - Raw API keys shown once at creation; never logged or stored
 - Revoke preserves historical usage rows
 
-**Future gateway (Phase 5C, not implemented yet):**
+### Phase 5C — Source-agnostic AI gateway ✅
 
-```bash
-curl -X POST http://localhost:3000/api/ai/gateway \
-  -H "Authorization: Bearer slate_app_sk_..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "employeeId": "...",
-    "clientId": "...",
-    "projectId": "...",
-    "workflowTypeId": "...",
-    "taskType": "client_update",
-    "model": "gpt-4o-mini",
-    "input": "..."
-  }'
+**Status:** Complete.
+
+**Delivered:**
+
+- `POST /api/ai/gateway` — synchronous internal AI gateway for company-native tools
+- `lib/internal-ai/gatewayTypes.ts` — request validation (no prompt/response storage fields)
+- `lib/internal-ai/gateway.ts` — bearer auth, attribution validation, LiteLLM call, audit/usage writes
+- `lib/litellm/resolveCompletion.ts` — shared LiteLLM completion reconciliation (also used by Slack handler)
+- Idempotency: duplicate `sourceAppRequestId` returns **409 Conflict** (response text is not replayed)
+- `scripts/test-internal-ai-gateway.ts` + `npm run gateway:test` (mock mode by default)
+- Tests mock LiteLLM; no paid provider calls in CI
+
+**Request shape:**
+
+```json
+{
+  "employeeId": "...",
+  "clientId": "...",
+  "projectId": "...",
+  "workflowTypeId": "...",
+  "taskType": "client_update",
+  "sourceAppRequestId": "optional-idempotency-key",
+  "model": "gpt-4o-mini",
+  "input": "User prompt sent to LiteLLM (not stored in Slate DB)"
+}
 ```
+
+**Auth:** `Authorization: Bearer slate_app_sk_...` (Phase 5B credential)
+
+**Response:** `output` (model text to caller), `usage` (tokens/cost/model/provider), `attribution`, `aiRequestAuditId`. Prompt/response text is **not** persisted.
 
 **Do not break:** Slack integration, privacy defaults, existing usage history.
 
 ---
 
-### Phase 5C — Source-agnostic AI gateway
+### Phase 5D — Gateway integration hardening and backend reporting endpoints
 
-**Goal:** Implement `POST /api/ai/gateway` using existing LiteLLM client and audit/usage recording.
+**Goal:** Harden gateway operations and expose backend reporting APIs for employee/source-app/task-type dimensions before building mock portal UI.
 
-**Files likely touched:** `app/api/ai/gateway/route.ts`, new `lib/ai/gateway.ts`, LiteLLM client metadata tags, tests with mocked LiteLLM.
-
-**Completion criteria:**
-
-- Gateway creates `AiRequestAudit` + `AiUsageEvent` with employee/source/task attribution
-- LiteLLM called through existing client (no direct provider calls under `app/api`)
-- Response returned to caller; prompt/response not persisted
-- Spend reconciliation hooks work with LiteLLM request ID
+**Likely work:** reporting endpoints, dashboard wiring prep, operational metrics, optional DB uniqueness on `(organizationId, sourceAppId, sourceAppRequestId)`.
 
 **Do not break:** Slack job handler, existing analytics queries, privacy tests.
 
 ---
 
-### Phase 5D — Mock AI-native company website
+### Phase 5E — Mock AI-native company website
 
 **Goal:** Build `/company-ai` demo portal with selectors, prompt input, run button, response display, and post-task usage summary.
 
@@ -318,7 +327,7 @@ curl -X POST http://localhost:3000/api/ai/gateway \
 
 ---
 
-### Phase 5E — Internal AI usage dashboard
+### Phase 5F — Internal AI usage dashboard
 
 **Goal:** Update dashboard and `/clients` to surface employee, source app, and task type dimensions.
 
@@ -335,7 +344,7 @@ curl -X POST http://localhost:3000/api/ai/gateway \
 
 ---
 
-### Phase 5F — Real company integration guide
+### Phase 5G — Real company integration guide
 
 **Goal:** Document how a real company connects an internal AI tool to Slate.
 

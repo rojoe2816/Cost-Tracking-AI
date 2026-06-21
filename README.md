@@ -14,7 +14,8 @@ usage can be attributed to employees, clients, projects, and workflows.
 See [docs/internal-ai-platform-pivot.md](./docs/internal-ai-platform-pivot.md) for
 the full architecture pivot, revised phases, and success criteria. Phase 5A adds
 `Employee` and `AiSourceApp` models plus backend helpers in `lib/internal-ai/`.
-Phase 5B adds hashed source app API credentials for future internal AI gateway auth.
+Phase 5B adds hashed source app API credentials for internal AI gateway auth.
+Phase 5C adds `POST /api/ai/gateway` for source-agnostic internal AI tool integration.
 Slack OAuth, channel mapping, and event routes remain documented below as an optional
 connector path — they are not required for the new internal-portal MVP.
 
@@ -223,7 +224,33 @@ npm run source-app:key:create -- --source-app-name "Mock Company AI Portal"
 ```
 
 Store the printed raw key in your password manager or local `.env`. It is not saved in the repo.
-`POST /api/ai/gateway` is planned for Phase 5C and is not implemented yet.
+
+## Internal AI gateway (Phase 5C)
+
+Company-native tools call Slate synchronously (unlike Slack, which acks in 3s and processes async):
+
+```bash
+npm run gateway:test
+# prints a curl template; pass --execute with SOURCE_APP_API_KEY to call locally
+```
+
+```bash
+curl -X POST http://localhost:3000/api/ai/gateway \
+  -H "Authorization: Bearer slate_app_sk_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employeeId": "...",
+    "clientId": "...",
+    "projectId": "...",
+    "workflowTypeId": "...",
+    "taskType": "client_update",
+    "sourceAppRequestId": "optional-idempotency-key",
+    "model": "gpt-4o-mini",
+    "input": "User prompt (not stored in Slate DB)"
+  }'
+```
+
+Bearer credentials: create with `npm run source-app:key:create`. Prompt/response text is returned to the caller but **not** persisted. Duplicate `sourceAppRequestId` returns **409 Conflict**.
 
 ## Docker services
 

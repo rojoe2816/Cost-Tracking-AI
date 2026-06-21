@@ -9,20 +9,14 @@ import {
   markAiRequestFailed,
   markAiRequestProcessing,
 } from "@/lib/ai/requests";
-import {
-  isLiteLlmAnalyticsConfigured,
-  reconcileLiteLlmSpendByAppRequestId,
-  type LiteLlmSpendReconciliation,
-} from "@/lib/analytics/litellmSpendReconciliation";
 import { usdToMicros } from "@/lib/db/costs";
 import { db } from "@/lib/db";
-import type { SlackAiRequestJobPayload } from "@/lib/queue/types";
 import {
   sendLiteLlmChatCompletion,
-  type LiteLlmCompletionResult,
-  type LiteLlmUsage,
 } from "@/lib/litellm/client";
+import { resolveLiteLlmCompletionForPersistence } from "@/lib/litellm/resolveCompletion";
 import { logger } from "@/lib/logger";
+import type { SlackAiRequestJobPayload } from "@/lib/queue/types";
 import {
   resolveSlackAttribution,
   type SlackAttribution,
@@ -46,15 +40,6 @@ const FAILURE_MESSAGE =
 const THINKING_MESSAGE = "Thinking...";
 
 const MAX_ERROR_MESSAGE_LENGTH = 1000;
-
-type ResolvedLiteLlmCompletion = {
-  content: string;
-  provider: string;
-  model: string;
-  usage: Required<LiteLlmUsage>;
-  costUsd?: number;
-  externalLiteLlmRequestId?: string;
-};
 
 export async function handleSlackAiRequestJob(
   payload: SlackAiRequestJobPayload,
@@ -491,138 +476,4 @@ function sanitizeJobErrorMessage(error: unknown): string {
   }
 
   return "Slack AI request failed".slice(0, MAX_ERROR_MESSAGE_LENGTH);
-}
-
-function completionNeedsReconciliation(completion: LiteLlmCompletionResult) {
-  return (
-    !completion.externalLiteLlmRequestId ||
-    !completion.provider ||
-    completion.costUsd === undefined ||
-    completion.usage?.inputTokens === undefined ||
-    completion.usage?.outputTokens === undefined ||
-    completion.usage?.totalTokens === undefined
-  );
-}
-
-function mergeUsage(
-  directUsage?: LiteLlmUsage,
-  reconciledUsage?: LiteLlmUsage,
-): Required<LiteLlmUsage> {
-  const inputTokens = directUsage?.inputTokens ?? reconciledUsage?.inputTokens ?? 0;
-  const outputTokens =
-    directUsage?.outputTokens ?? reconciledUsage?.outputTokens ?? 0;
-  const totalTokens =
-    directUsage?.totalTokens ??
-    reconciledUsage?.totalTokens ??
-    inputTokens + outputTokens;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  };
-}
-
-function mergeCompletion(
-  completion: LiteLlmCompletionResult,
-  reconciliation: LiteLlmSpendReconciliation | null,
-): ResolvedLiteLlmCompletion {
-  return {
-    content: completion.content,
-    provider: completion.provider ?? reconciliation?.provider ?? "unknown",
-    model: completion.model || reconciliation?.model || "unknown",
-    usage: mergeUsage(completion.usage, reconciliation?.usage),
-    ...(completion.costUsd !== undefined
-      ? { costUsd: completion.costUsd }
-      : reconciliation?.costUsd !== undefined
-        ? { costUsd: reconciliation.costUsd }
-        : {}),
-    ...(completion.externalLiteLlmRequestId
-      ? { externalLiteLlmRequestId: completion.externalLiteLlmRequestId }
-      : reconciliation?.externalLiteLlmRequestId
-        ? {
-            externalLiteLlmRequestId:
-              reconciliation.externalLiteLlmRequestId,
-          }
-        : {}),
-  };
-}
-
-async function resolveLiteLlmCompletionForPersistence(input: {
-  aiRequestAuditId: string;
-  completion: LiteLlmCompletionResult;
-  organizationId: string;
-}): Promise<ResolvedLiteLlmCompletion> {
-  let reconciliation: LiteLlmSpendReconciliation | null = null;
-
-  if (completionNeedsReconciliation(input.completion)) {
-    if (!isLiteLlmAnalyticsConfigured()) {
-      logger.warn(
-        {
-          aiRequestAuditId: input.aiRequestAuditId,
-          organizationId: input.organizationId,
-          missingExternalLiteLlmRequestId: !input.completion.externalLiteLlmRequestId,
-          missingProvider: !input.completion.provider,
-          missingCostUsd: input.completion.costUsd === undefined,
-        },
-        "LiteLLM analytics reconciliation skipped because no analytics database is configured",
-      );
-    } else {
-      try {
-        reconciliation = await reconcileLiteLlmSpendByAppRequestId(
-          input.aiRequestAuditId,
-          input.completion.externalLiteLlmRequestId,
-        );
-      } catch (error) {
-        logger.warn(
-          {
-            err: error,
-            aiRequestAuditId: input.aiRequestAuditId,
-            organizationId: input.organizationId,
-          },
-          "LiteLLM spend reconciliation failed",
-        );
-      }
-    }
-  }
-
-  const resolvedCompletion = mergeCompletion(input.completion, reconciliation);
-
-  if (reconciliation) {
-    logger.info(
-      {
-        aiRequestAuditId: input.aiRequestAuditId,
-        organizationId: input.organizationId,
-        externalLiteLlmRequestId: reconciliation.externalLiteLlmRequestId,
-        provider: reconciliation.provider,
-        model: reconciliation.model,
-        inputTokens: reconciliation.usage?.inputTokens,
-        outputTokens: reconciliation.usage?.outputTokens,
-        totalTokens: reconciliation.usage?.totalTokens,
-        costUsd: reconciliation.costUsd,
-      },
-      "Reconciled LiteLLM spend data from analytics database",
-    );
-  }
-
-  if (
-    !resolvedCompletion.externalLiteLlmRequestId ||
-    resolvedCompletion.provider === "unknown" ||
-    resolvedCompletion.costUsd === undefined
-  ) {
-    logger.warn(
-      {
-        aiRequestAuditId: input.aiRequestAuditId,
-        organizationId: input.organizationId,
-        hasExternalLiteLlmRequestId: Boolean(
-          resolvedCompletion.externalLiteLlmRequestId,
-        ),
-        provider: resolvedCompletion.provider,
-        hasCostUsd: resolvedCompletion.costUsd !== undefined,
-      },
-      "LiteLLM completion metadata remained incomplete after reconciliation",
-    );
-  }
-
-  return resolvedCompletion;
 }

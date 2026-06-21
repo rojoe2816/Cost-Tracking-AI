@@ -59,6 +59,10 @@ export async function createProcessingAiRequestAudit(input: {
   clientId?: string | null;
   projectId?: string | null;
   workflowTypeId?: string | null;
+  employeeId?: string | null;
+  sourceAppId?: string | null;
+  taskType?: string | null;
+  sourceAppRequestId?: string | null;
 }): Promise<{ id: string }> {
   return db.aiRequestAudit.create({
     data: {
@@ -73,6 +77,10 @@ export async function createProcessingAiRequestAudit(input: {
       clientId: input.clientId ?? null,
       projectId: input.projectId ?? null,
       workflowTypeId: input.workflowTypeId ?? null,
+      employeeId: input.employeeId ?? null,
+      sourceAppId: input.sourceAppId ?? null,
+      taskType: input.taskType ?? null,
+      sourceAppRequestId: input.sourceAppRequestId ?? null,
       promptStored: false,
     },
     select: { id: true },
@@ -170,6 +178,9 @@ export async function createAiUsageEvent(input: {
   clientId?: string | null;
   projectId?: string | null;
   workflowTypeId?: string | null;
+  employeeId?: string | null;
+  sourceAppId?: string | null;
+  taskType?: string | null;
 }): Promise<void> {
   await db.aiUsageEvent.create({
     data: {
@@ -191,6 +202,9 @@ export async function createAiUsageEvent(input: {
       clientId: input.clientId ?? null,
       projectId: input.projectId ?? null,
       workflowTypeId: input.workflowTypeId ?? null,
+      employeeId: input.employeeId ?? null,
+      sourceAppId: input.sourceAppId ?? null,
+      taskType: input.taskType ?? null,
     },
   });
 }
