@@ -96,7 +96,10 @@ function StatusBadge({ status }: { status: ProfitabilityStatus }) {
   return (
     <Badge
       variant="secondary"
-      className={cn("rounded-full px-3 py-1", statusStyles[status])}
+      className={cn(
+        "whitespace-nowrap rounded-full px-3 py-1",
+        statusStyles[status],
+      )}
     >
       {status}
     </Badge>
@@ -136,7 +139,7 @@ function MonthSelector({
               required
             />
           </label>
-          <Button type="submit" variant="secondary">
+          <Button type="submit" variant="secondary" className="whitespace-nowrap">
             View month
           </Button>
         </form>
@@ -181,7 +184,7 @@ function RevenueEditor({
         </p>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="min-w-[860px]">
           <TableHeader>
             <TableRow>
               <TableHead>Client</TableHead>
@@ -198,17 +201,17 @@ function RevenueEditor({
 
               return (
                 <TableRow key={row.clientId} id={`client-${row.clientId}`}>
-                  <TableCell>
+                  <TableCell className="min-w-[220px]">
                     <div className="space-y-1">
                       <p className="font-medium">{row.clientName}</p>
-                      <p className="max-w-[260px] text-xs text-muted-foreground">
+                      <p className="max-w-[260px] truncate text-xs text-muted-foreground">
                         {row.projectNames.length > 0
                           ? row.projectNames.join(", ")
                           : "No active projects linked"}
                       </p>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-[150px]">
                     <Input
                       form={formId}
                       id={`revenue-${row.clientId}`}
@@ -221,7 +224,7 @@ function RevenueEditor({
                       required
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-[190px]">
                     <Input
                       form={formId}
                       id={`labor-${row.clientId}`}
@@ -254,10 +257,10 @@ function RevenueEditor({
                             type="submit"
                             size="sm"
                             variant="outline"
-                            className="gap-2"
+                            className="gap-2 whitespace-nowrap"
                           >
                             <Trash2 className="h-4 w-4" />
-                            Clear revenue for this month
+                            Clear month
                           </Button>
                         </form>
                       ) : null}
@@ -297,7 +300,7 @@ function ProfitabilityTable({
             No clients yet. Add clients to track AI profitability.
           </p>
         ) : (
-          <Table>
+          <Table className="min-w-[1180px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
@@ -316,35 +319,35 @@ function ProfitabilityTable({
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.clientId}>
-                  <TableCell>
+                  <TableCell className="min-w-[220px]">
                     <div className="space-y-1">
                       <p className="font-medium">{row.clientName}</p>
-                      <p className="max-w-[260px] text-xs text-muted-foreground">
+                      <p className="max-w-[260px] truncate text-xs text-muted-foreground">
                         {row.projectNames.length > 0
                           ? row.projectNames.join(", ")
                           : "No active projects linked"}
                       </p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                     {formatNullableUsd(row.revenueUsd)}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                     {formatSmallUsd(row.aiSpendUsd)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatPercent(row.aiCostRatio)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatUsd(row.estimatedLaborCostUsd)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatPercent(row.aiAdjustedMargin)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatNumber(row.requestCount)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatNumber(row.totalTokens)}
                   </TableCell>
                   <TableCell className="text-right">
@@ -382,7 +385,7 @@ function RevenueHistory({
             No revenue history yet. Save monthly revenue to start the ledger.
           </p>
         ) : (
-          <Table>
+          <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
@@ -396,19 +399,28 @@ function RevenueHistory({
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell>{row.clientName}</TableCell>
-                  <TableCell>{row.month}</TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="max-w-[220px] truncate">
+                    {row.clientName}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-xs">
+                    {row.month}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                     {formatUsd(row.revenueUsd)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatNullableUsd(row.estimatedLaborCostUsd)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
                     {format(row.updatedAt, "MMM d, yyyy HH:mm")}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button asChild variant="secondary" size="sm">
+                    <Button
+                      asChild
+                      variant="secondary"
+                      size="sm"
+                      className="whitespace-nowrap"
+                    >
                       <Link href={`/clients?month=${row.month}#client-${row.clientId}`}>
                         View month
                       </Link>

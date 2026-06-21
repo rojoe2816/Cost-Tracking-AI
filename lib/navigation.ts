@@ -20,31 +20,31 @@ export const dashboardNavigation: DashboardNavItem[] = [
   {
     href: "/dashboard",
     label: "Dashboard",
-    description: "Agency overview and placeholders",
+    description: "AI usage and gateway health",
     icon: LayoutDashboard,
   },
   {
     href: "/clients",
     label: "Clients",
-    description: "Revenue, AI spend, and margin",
+    description: "Profitability and AI cost",
     icon: Building2,
   },
   {
     href: "/projects",
     label: "Projects",
-    description: "Project shell and mapping readiness",
+    description: "Delivery attribution setup",
     icon: Layers3,
   },
   {
     href: "/slack",
     label: "Slack",
-    description: "Channel mapping and install status",
+    description: "Legacy connector mappings",
     icon: Hash,
   },
   {
     href: "/jobs",
     label: "Jobs",
-    description: "Durable background queue visibility",
+    description: "Queue and connector operations",
     icon: ListTodo,
   },
   {

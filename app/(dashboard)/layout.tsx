@@ -25,23 +25,22 @@ export default function DashboardLayout({
               <div className="space-y-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                    Agency control plane
+                    Internal AI control plane
                   </p>
                   <h1 className="font-heading text-3xl font-semibold tracking-tight">
                     {demoAgency.name}
                   </h1>
                 </div>
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                  Dashboard shell for the current local milestone. Authentication,
-                  live spend ingestion, and Slack install flows are still
-                  intentionally deferred while the data model and integration seams
-                  settle.
+                  Monitor source-app gateway usage, attribution, and client
+                  profitability for the local Demo Agency workspace. Authentication
+                  is still deferred while the internal AI integration seams settle.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <Badge variant="secondary" className="rounded-full px-3 py-1">
-                  Local MVP shell
+                  Local integration shell
                 </Badge>
                 <Badge className="rounded-full bg-primary/10 px-3 py-1 text-primary hover:bg-primary/10">
                   Auth deferred

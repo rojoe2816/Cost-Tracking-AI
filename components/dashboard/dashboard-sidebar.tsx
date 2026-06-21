@@ -30,8 +30,8 @@ export function DashboardSidebar({
             {organizationName}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Local dashboard shell with seeded clients and privacy defaults. Auth,
-            spend sync, and Slack installation are intentionally deferred.
+            Local integration shell with seeded clients, source apps, and
+            metadata-only privacy defaults. Legacy connectors remain optional.
           </p>
           <dl className="mt-5 grid grid-cols-3 gap-3 text-sm">
             <div className="rounded-2xl bg-white/75 p-3">

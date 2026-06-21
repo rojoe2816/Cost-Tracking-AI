@@ -76,7 +76,8 @@ export default async function DashboardOverviewPage() {
           description="Spend and request rollups from attributed AI usage events for the current month."
         />
         <div className="rounded-2xl bg-secondary/70 p-6 text-sm text-muted-foreground">
-          No AI usage tracked yet. Try using the Slack bot in a mapped channel.
+          No AI usage tracked yet. Send a request through the internal AI gateway
+          or a configured legacy connector to populate this dashboard.
         </div>
       </div>
     );
@@ -129,7 +130,7 @@ export default async function DashboardOverviewPage() {
             <CardTitle className="font-heading text-xl">Spend by client</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table className="min-w-[420px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>
@@ -140,9 +141,13 @@ export default async function DashboardOverviewPage() {
               <TableBody>
                 {spendByClient.map((row) => (
                   <TableRow key={row.clientId ?? "unattributed"}>
-                    <TableCell>{row.clientName}</TableCell>
-                    <TableCell className="text-right">{row.requests}</TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="max-w-[220px] truncate">
+                      {row.clientName}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {row.requests}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                       {formatSmallUsd(row.spendUsd)}
                     </TableCell>
                   </TableRow>
@@ -157,7 +162,7 @@ export default async function DashboardOverviewPage() {
             <CardTitle className="font-heading text-xl">Spend by workflow</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table className="min-w-[420px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Workflow</TableHead>
@@ -168,9 +173,13 @@ export default async function DashboardOverviewPage() {
               <TableBody>
                 {spendByWorkflow.map((row) => (
                   <TableRow key={row.workflowTypeId ?? "unattributed"}>
-                    <TableCell>{row.workflowName}</TableCell>
-                    <TableCell className="text-right">{row.requests}</TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="max-w-[220px] truncate">
+                      {row.workflowName}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {row.requests}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                       {formatSmallUsd(row.spendUsd)}
                     </TableCell>
                   </TableRow>
@@ -185,7 +194,7 @@ export default async function DashboardOverviewPage() {
             <CardTitle className="font-heading text-xl">Spend by source</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
+            <Table className="min-w-[420px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Source</TableHead>
@@ -196,9 +205,13 @@ export default async function DashboardOverviewPage() {
               <TableBody>
                 {spendBySource.map((row) => (
                   <TableRow key={row.source}>
-                    <TableCell>{formatEnumLabel(row.source)}</TableCell>
-                    <TableCell className="text-right">{row.requests}</TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="max-w-[220px] truncate">
+                      {formatEnumLabel(row.source)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {row.requests}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                       {formatSmallUsd(row.spendUsd)}
                     </TableCell>
                   </TableRow>
@@ -210,7 +223,7 @@ export default async function DashboardOverviewPage() {
       </section>
 
       <Card className="surface-panel border-0">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="font-heading text-2xl">Recent AI requests</CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -220,7 +233,7 @@ export default async function DashboardOverviewPage() {
           <Hash className="h-5 w-5 text-primary" />
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="min-w-[1120px]">
             <TableHeader>
               <TableRow>
                 <TableHead>When</TableHead>
@@ -241,19 +254,29 @@ export default async function DashboardOverviewPage() {
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {format(row.createdAt, "MMM d, yyyy HH:mm")}
                   </TableCell>
-                  <TableCell>{formatEnumLabel(row.source)}</TableCell>
-                  <TableCell>{row.clientName ?? "—"}</TableCell>
-                  <TableCell>{row.projectName ?? "—"}</TableCell>
-                  <TableCell>{row.workflowName ?? "—"}</TableCell>
-                  <TableCell>{row.model}</TableCell>
-                  <TableCell>{row.provider}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="whitespace-nowrap">
+                    {formatEnumLabel(row.source)}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {row.clientName ?? "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {row.projectName ?? "—"}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {row.workflowName ?? "—"}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-xs">
+                    {row.model}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">{row.provider}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatTokenCount(row.totalTokens)}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                     {formatSmallUsd(row.spendUsd)}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
+                  <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
                     {truncateLiteLlmRequestId(row.externalLiteLlmRequestId)}
                   </TableCell>
                 </TableRow>
