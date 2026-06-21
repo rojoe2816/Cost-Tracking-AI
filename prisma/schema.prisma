@@ -245,21 +245,45 @@ model Employee {
 }
 
 model AiSourceApp {
-  id              String           @id @default(cuid())
+  id              String                  @id @default(cuid())
   organizationId  String
   name            String
   type            String
   description     String?
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isActive        Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   aiRequestAudits AiRequestAudit[]
   aiUsageEvents   AiUsageEvent[]
+  credentials     AiSourceAppCredential[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
   @@index([organizationId, type])
+  @@index([createdAt])
+}
+
+model AiSourceAppCredential {
+  id             String      @id @default(cuid())
+  organizationId String
+  sourceAppId    String
+  name           String
+  keyPrefix      String
+  keyHash        String
+  keyLast4       String
+  isActive       Boolean     @default(true)
+  scopes         Json?
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  sourceApp      AiSourceApp @relation(fields: [sourceAppId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([sourceAppId])
+  @@index([keyPrefix])
+  @@index([organizationId, sourceAppId])
   @@index([createdAt])
 }
 

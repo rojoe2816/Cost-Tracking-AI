@@ -14,6 +14,7 @@ usage can be attributed to employees, clients, projects, and workflows.
 See [docs/internal-ai-platform-pivot.md](./docs/internal-ai-platform-pivot.md) for
 the full architecture pivot, revised phases, and success criteria. Phase 5A adds
 `Employee` and `AiSourceApp` models plus backend helpers in `lib/internal-ai/`.
+Phase 5B adds hashed source app API credentials for future internal AI gateway auth.
 Slack OAuth, channel mapping, and event routes remain documented below as an optional
 connector path — they are not required for the new internal-portal MVP.
 
@@ -209,6 +210,20 @@ npm run worker
 6. After OAuth completes, `/slack` should show the connected workspace, team ID, and bot installed status.
 
 Local development scripts such as `scripts/upsert-local-slack-workspace.ts` remain available for seeded/fake workspaces, but OAuth is the preferred pilot path.
+
+## Source app API credentials (Phase 5B)
+
+Internal AI tools will authenticate to Slate using bearer tokens scoped to an `AiSourceApp`.
+Raw keys are shown once at creation and stored only as HMAC hashes (`keyPrefix`, `keyHash`, `keyLast4`).
+
+Create a dev credential for the Mock Company AI Portal:
+
+```bash
+npm run source-app:key:create -- --source-app-name "Mock Company AI Portal"
+```
+
+Store the printed raw key in your password manager or local `.env`. It is not saved in the repo.
+`POST /api/ai/gateway` is planned for Phase 5C and is not implemented yet.
 
 ## Docker services
 

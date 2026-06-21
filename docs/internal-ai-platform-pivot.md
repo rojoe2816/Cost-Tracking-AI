@@ -251,19 +251,37 @@ The mock portal and AI gateway must not weaken these defaults.
 
 ---
 
-### Phase 5B — Source app authentication and API key hashing
+### Phase 5B — Source app authentication and API key hashing ✅
 
-**Goal:** Authenticate internal apps calling the future gateway (hashed API keys per `AiSourceApp`, encrypted at rest).
+**Status:** Complete.
 
-**Files likely touched:** `lib/security/`, `AiSourceApp` schema extension, auth middleware stubs, tests.
+**Delivered:**
 
-**Completion criteria:**
+- `AiSourceAppCredential` model (hash-only storage: `keyPrefix`, `keyHash`, `keyLast4`)
+- `lib/internal-ai/sourceAppApiKey.ts` — HMAC-SHA256 hashing with `ENCRYPTION_KEY` pepper
+- `lib/internal-ai/sourceAppAuth.ts` — create, authenticate, revoke, list, parse Bearer token
+- `scripts/create-source-app-key.ts` + `npm run source-app:key:create`
+- Raw API keys shown once at creation; never logged or stored
+- Revoke preserves historical usage rows
 
-- Each registered source app can have credentials
-- Gateway auth rejects unauthenticated or cross-org requests (when gateway lands in 5C)
-- Secrets encrypted at rest using existing encryption helpers
+**Future gateway (Phase 5C, not implemented yet):**
 
-**Do not break:** Demo org local dev flow (provide dev bypass or seeded keys).
+```bash
+curl -X POST http://localhost:3000/api/ai/gateway \
+  -H "Authorization: Bearer slate_app_sk_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "employeeId": "...",
+    "clientId": "...",
+    "projectId": "...",
+    "workflowTypeId": "...",
+    "taskType": "client_update",
+    "model": "gpt-4o-mini",
+    "input": "..."
+  }'
+```
+
+**Do not break:** Slack integration, privacy defaults, existing usage history.
 
 ---
 

@@ -16,6 +16,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "simulate:slack": "tsx scripts/simulate-slack-event.ts",
+    "source-app:key:create": "tsx scripts/create-source-app-key.ts",
     "worker": "tsx scripts/run-worker.ts",
     "postinstall": "prisma generate"
   },
