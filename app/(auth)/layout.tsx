@@ -12,12 +12,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             <AppLogo />
             <div className="space-y-4">
               <h1 className="max-w-xl font-heading text-5xl font-semibold tracking-tight text-balance">
-                Auth will plug into the agency membership model next.
+                The control plane stays private by default.
               </h1>
               <p className="max-w-lg text-lg leading-8 text-muted-foreground">
-                The shell is ready for role-aware agency access, but this milestone
-                intentionally stops at database and application setup so the auth
-                strategy can be chosen cleanly.
+                Slate revalidates each session against the agency membership model,
+                keeping reporting, source credentials, and provider policy inside
+                the selected organization boundary.
               </p>
             </div>
           </div>

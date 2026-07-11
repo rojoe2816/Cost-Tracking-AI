@@ -24,14 +24,14 @@ export function DashboardSidebar({
 
         <div className="rounded-3xl border border-border/70 bg-secondary/65 p-5">
           <Badge variant="secondary" className="rounded-full">
-            Demo workspace
+            Authenticated workspace
           </Badge>
           <h2 className="mt-4 font-heading text-2xl font-semibold">
             {organizationName}
           </h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Local integration shell with seeded clients, source apps, and
-            metadata-only privacy defaults. Legacy connectors remain optional.
+            Organization-scoped clients, source apps, model policy, and
+            metadata-only privacy controls.
           </p>
           <dl className="mt-5 grid grid-cols-3 gap-3 text-sm">
             <div className="rounded-2xl bg-white/75 p-3">

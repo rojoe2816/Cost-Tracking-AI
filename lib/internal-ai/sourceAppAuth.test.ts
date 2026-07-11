@@ -48,6 +48,7 @@ const CREDENTIAL_ROW = {
   keyPrefix: KEY_PREFIX,
   keyHash: KEY_HASH,
   keyLast4: KEY_LAST4,
+  scopes: ["ai:run", "context:read", "context:write", "reports:read"],
   isActive: true,
   lastUsedAt: null,
   revokedAt: null,
@@ -70,6 +71,7 @@ describe("sourceAppAuth", () => {
       lastUsedAt: null,
       revokedAt: null,
       createdAt: new Date("2026-06-21T12:00:00.000Z"),
+      scopes: data.scopes,
       sourceApp: { name: "Mock Company AI Portal" },
     }));
   });
@@ -118,6 +120,7 @@ describe("sourceAppAuth", () => {
         credentialId: CREDENTIAL_ID,
         sourceAppName: "Mock Company AI Portal",
         sourceAppType: "mock_company_portal",
+        scopes: ["ai:run", "context:read", "context:write", "reports:read"],
       },
     });
   });
@@ -256,6 +259,7 @@ describe("sourceAppAuth", () => {
       keyPrefix: KEY_PREFIX,
       keyLast4: KEY_LAST4,
       sourceAppName: "Mock Company AI Portal",
+      scopes: ["ai:run", "context:read", "context:write", "reports:read"],
     });
     expect(JSON.stringify(rows)).not.toContain(KEY_HASH);
     expect(JSON.stringify(rows)).not.toContain(RAW_KEY);

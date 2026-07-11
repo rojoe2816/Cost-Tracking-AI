@@ -83,6 +83,7 @@ const AUTH_VALUE = {
   credentialId: "cred_1",
   sourceAppName: "Mock Company AI Portal",
   sourceAppType: "mock_company_portal",
+  scopes: ["ai:run" as const],
 };
 
 const ATTRIBUTION_VALUE = {
@@ -284,6 +285,22 @@ describe("processInternalAiGatewayRequest", () => {
       expect(result.value.error.code).toBe("DUPLICATE_SOURCE_APP_REQUEST");
     }
     expect(mockCreateProcessingAiRequestAudit).not.toHaveBeenCalled();
+    expect(mockSendLiteLlmChatCompletion).not.toHaveBeenCalled();
+  });
+
+  it("maps a concurrent idempotency race to 409 before the model call", async () => {
+    mockCreateProcessingAiRequestAudit.mockRejectedValue({ code: "P2002" });
+
+    const result = await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: VALID_BODY,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      value: { error: { code: "DUPLICATE_SOURCE_APP_REQUEST" } },
+    });
     expect(mockSendLiteLlmChatCompletion).not.toHaveBeenCalled();
   });
 

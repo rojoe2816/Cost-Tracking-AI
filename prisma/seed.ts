@@ -53,11 +53,13 @@ async function main() {
         },
       },
       update: {
+        externalId: client.externalId,
         externalAccountingId: client.externalAccountingId,
         status: client.status,
       },
       create: {
         organizationId: organization.id,
+        externalId: client.externalId,
         name: client.name,
         externalAccountingId: client.externalAccountingId,
         status: client.status,
@@ -74,11 +76,13 @@ async function main() {
           },
         },
         update: {
+          externalId: project.externalId,
           status: project.status,
         },
         create: {
           organizationId: organization.id,
           clientId: persistedClient.id,
+          externalId: project.externalId,
           name: project.name,
           status: project.status,
         },
@@ -87,21 +91,23 @@ async function main() {
   }
 
   await Promise.all(
-    demoAgency.workflowTypes.map((name) =>
+    demoAgency.workflowTypes.map((workflow) =>
       prisma.workflowType.upsert({
         where: {
           organizationId_slug: {
             organizationId: organization.id,
-            slug: slugify(name),
+            slug: slugify(workflow.name),
           },
         },
         update: {
-          name,
+          name: workflow.name,
+          externalId: workflow.externalId,
         },
         create: {
           organizationId: organization.id,
-          name,
-          slug: slugify(name),
+          name: workflow.name,
+          slug: slugify(workflow.name),
+          externalId: workflow.externalId,
         },
       }),
     ),
@@ -171,6 +177,29 @@ async function main() {
     create: {
       organizationId: organization.id,
       promptStorageMode: demoAgency.privacy.promptStorageMode,
+    },
+  });
+
+  await prisma.modelProviderConnection.upsert({
+    where: {
+      organizationId_name: {
+        organizationId: organization.id,
+        name: "Slate-managed LiteLLM",
+      },
+    },
+    update: {
+      providerType: "litellm",
+      endpointUrl: process.env.LITELLM_PROXY_URL ?? "http://localhost:4000",
+      allowedModels: ["gpt-4o-mini", "gpt-4o"],
+      isActive: true,
+    },
+    create: {
+      organizationId: organization.id,
+      name: "Slate-managed LiteLLM",
+      providerType: "litellm",
+      endpointUrl: process.env.LITELLM_PROXY_URL ?? "http://localhost:4000",
+      allowedModels: ["gpt-4o-mini", "gpt-4o"],
+      isActive: true,
     },
   });
 

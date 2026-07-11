@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { requireDashboardSession } from "@/lib/auth/session";
 import { getRecentBackgroundJobs } from "@/lib/queue";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,8 @@ function JobStatusBadge({ status }: { status: string }) {
 }
 
 export default async function JobsPage() {
-  const jobs = await getRecentBackgroundJobs(20);
+  const session = await requireDashboardSession();
+  const jobs = await getRecentBackgroundJobs(session.organizationId, 20);
 
   return (
     <div className="space-y-8">

@@ -49,23 +49,25 @@ enum BackgroundJobStatus {
 }
 
 model Organization {
-  id                   String                       @id @default(cuid())
-  name                 String
-  slug                 String                       @unique
-  createdAt            DateTime                     @default(now())
-  updatedAt            DateTime                     @updatedAt
-  memberships          Membership[]
-  clients              Client[]
-  projects             Project[]
-  workflowTypes        WorkflowType[]
-  slackWorkspaces      SlackWorkspace[]
-  slackChannelMappings SlackChannelMapping[]
-  clientRevenues       ClientRevenue[]
-  privacySettings      OrganizationPrivacySettings?
-  aiRequestAudits      AiRequestAudit[]
-  aiUsageEvents        AiUsageEvent[]
-  employees            Employee[]
-  aiSourceApps         AiSourceApp[]
+  id                       String                       @id @default(cuid())
+  name                     String
+  slug                     String                       @unique
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+  memberships              Membership[]
+  clients                  Client[]
+  projects                 Project[]
+  workflowTypes            WorkflowType[]
+  slackWorkspaces          SlackWorkspace[]
+  slackChannelMappings     SlackChannelMapping[]
+  clientRevenues           ClientRevenue[]
+  privacySettings          OrganizationPrivacySettings?
+  aiRequestAudits          AiRequestAudit[]
+  aiUsageEvents            AiUsageEvent[]
+  employees                Employee[]
+  aiSourceApps             AiSourceApp[]
+  modelProviderConnections ModelProviderConnection[]
+  backgroundJobs           BackgroundJob[]
 
   @@index([createdAt])
 }
@@ -101,6 +103,7 @@ model Membership {
 model Client {
   id                   String                @id @default(cuid())
   organizationId       String
+  externalId           String?
   name                 String
   externalAccountingId String?
   status               ClientStatus          @default(ACTIVE)
@@ -114,6 +117,7 @@ model Client {
   aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, name])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
   @@index([createdAt])
@@ -123,6 +127,7 @@ model Project {
   id                   String                @id @default(cuid())
   organizationId       String
   clientId             String
+  externalId           String?
   name                 String
   status               ProjectStatus         @default(ACTIVE)
   createdAt            DateTime              @default(now())
@@ -135,6 +140,7 @@ model Project {
   aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, clientId, name])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([clientId])
   @@index([status])
@@ -144,6 +150,7 @@ model Project {
 model WorkflowType {
   id                   String                @id @default(cuid())
   organizationId       String
+  externalId           String?
   name                 String
   slug                 String
   createdAt            DateTime              @default(now())
@@ -154,6 +161,7 @@ model WorkflowType {
   aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, slug])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([createdAt])
 }
@@ -166,7 +174,7 @@ model SlackWorkspace {
   botUserId         String?
   encryptedBotToken String?
   connectedAt       DateTime?
-  disconnectedAt  DateTime?
+  disconnectedAt    DateTime?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -238,9 +246,29 @@ model Employee {
   aiUsageEvents   AiUsageEvent[]
 
   @@unique([organizationId, name])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([organizationId, email])
-  @@index([organizationId, externalId])
+  @@index([createdAt])
+}
+
+model ModelProviderConnection {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  name                String
+  providerType        String
+  endpointUrl         String?
+  encryptedCredential String?
+  allowedModels       Json
+  isActive            Boolean      @default(true)
+  lastValidatedAt     DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([organizationId, isActive])
   @@index([createdAt])
 }
 
@@ -330,6 +358,7 @@ model AiRequestAudit {
   sourceApp                AiSourceApp?    @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
   usageEvents              AiUsageEvent[]
 
+  @@unique([sourceAppId, sourceAppRequestId])
   @@index([organizationId])
   @@index([userId])
   @@index([clientId])
@@ -404,6 +433,7 @@ model AiUsageEvent {
 /// Payloads must contain metadata only — never prompt or response text.
 model BackgroundJob {
   id             String              @id @default(cuid())
+  organizationId String?
   type           String
   status         BackgroundJobStatus @default(QUEUED)
   payloadJson    Json
@@ -416,7 +446,9 @@ model BackgroundJob {
   idempotencyKey String?             @unique
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  organization   Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId, createdAt])
   @@index([status, runAfter])
   @@index([type])
   @@index([createdAt])

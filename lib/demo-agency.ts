@@ -7,16 +7,23 @@ export type DemoPromptStorageMode =
 
 export interface DemoProjectDefinition {
   id: string;
+  externalId: string;
   name: string;
   status: DemoEntityStatus;
 }
 
 export interface DemoClientDefinition {
   id: string;
+  externalId: string;
   name: string;
   externalAccountingId: string | null;
   status: DemoEntityStatus;
   projects: readonly DemoProjectDefinition[];
+}
+
+interface DemoWorkflowDefinition {
+  name: string;
+  externalId: string;
 }
 
 interface DemoAgencyDefinition {
@@ -28,7 +35,7 @@ interface DemoAgencyDefinition {
     role: DemoMembershipRole;
   };
   clients: readonly DemoClientDefinition[];
-  workflowTypes: readonly string[];
+  workflowTypes: readonly DemoWorkflowDefinition[];
   employees: readonly DemoEmployeeDefinition[];
   sourceApps: readonly DemoSourceAppDefinition[];
   privacy: {
@@ -61,12 +68,14 @@ export const demoAgency = {
   clients: [
     {
       id: "acme-dental",
+      externalId: "client-acme",
       name: "Acme Dental",
       externalAccountingId: null,
       status: "ACTIVE",
       projects: [
         {
           id: "seo-retainer",
+          externalId: "project-seo-001",
           name: "SEO Retainer",
           status: "ACTIVE",
         },
@@ -74,12 +83,14 @@ export const demoAgency = {
     },
     {
       id: "greenline-roofing",
+      externalId: "client-greenline",
       name: "Greenline Roofing",
       externalAccountingId: null,
       status: "ACTIVE",
       projects: [
         {
           id: "ad-campaign",
+          externalId: "project-ad-campaign-001",
           name: "Ad Campaign",
           status: "ACTIVE",
         },
@@ -87,12 +98,14 @@ export const demoAgency = {
     },
     {
       id: "northstar-fitness",
+      externalId: "client-northstar",
       name: "Northstar Fitness",
       externalAccountingId: null,
       status: "ACTIVE",
       projects: [
         {
           id: "website-refresh",
+          externalId: "project-website-refresh-001",
           name: "Website Refresh",
           status: "ACTIVE",
         },
@@ -100,13 +113,13 @@ export const demoAgency = {
     },
   ],
   workflowTypes: [
-    "Blog Drafting",
-    "SEO Research",
-    "Client Update",
-    "Proposal Writing",
-    "Meeting Summary",
-    "Ad Copy",
-    "Internal Admin",
+    { name: "Blog Drafting", externalId: "blog-drafting" },
+    { name: "SEO Research", externalId: "seo-research" },
+    { name: "Client Update", externalId: "client-update" },
+    { name: "Proposal Writing", externalId: "proposal-writing" },
+    { name: "Meeting Summary", externalId: "meeting-summary" },
+    { name: "Ad Copy", externalId: "ad-copy" },
+    { name: "Internal Admin", externalId: "internal-admin" },
   ],
   employees: [
     {

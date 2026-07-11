@@ -34,7 +34,7 @@ import {
   isRevenueMonth,
 } from "@/lib/clients/revenue";
 import { formatSmallUsd, formatUsd } from "@/lib/db/costs";
-import { getDemoOrganization } from "@/lib/slack/mappings";
+import { requireDashboardSession } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -453,7 +453,11 @@ export default async function ClientsPage({
     error?: ClientRevenueErrorCode;
   }>;
 }) {
-  const organization = await getDemoOrganization();
+  const session = await requireDashboardSession();
+  const organization = {
+    id: session.organizationId,
+    name: session.organizationName,
+  };
   const params = await searchParams;
   const defaultMonth = getRevenueMonthForDateRange(getDefaultUsageDateRange());
   const selectedMonth = getSelectedMonth(params, defaultMonth);
@@ -464,22 +468,6 @@ export default async function ClientsPage({
   const errorCode = isClientRevenueErrorCode(params.error)
     ? params.error
     : monthQueryError;
-
-  if (!organization) {
-    return (
-      <div className="space-y-8">
-        <PageHeader
-          eyebrow="Clients"
-          title="Clients"
-          description="Track client revenue, AI spend, and AI-adjusted margin in Slate."
-        />
-        <div className="rounded-2xl bg-secondary/70 p-4 text-sm text-muted-foreground">
-          Demo Agency organization not found. Run `npm run db:seed` to create local
-          development data.
-        </div>
-      </div>
-    );
-  }
 
   const [rows, revenueHistoryRows] = await Promise.all([
     getClientProfitabilityRows(organization.id, selectedDateRange),

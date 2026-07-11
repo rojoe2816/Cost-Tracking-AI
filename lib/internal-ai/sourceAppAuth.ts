@@ -12,6 +12,11 @@ import {
   isValidRawKeyFormat,
   verifySourceAppApiKey,
 } from "./sourceAppApiKey";
+import {
+  normalizeSourceAppScopes,
+  SOURCE_APP_SCOPES,
+  type SourceAppScope,
+} from "./sourceAppScopes";
 
 export {
   SOURCE_APP_API_KEY_PREFIX,
@@ -24,6 +29,7 @@ export type SourceAppAuthContext = {
   credentialId: string;
   sourceAppName: string;
   sourceAppType: string;
+  scopes: SourceAppScope[];
 };
 
 export type SourceAppCredentialSafeMetadata = {
@@ -38,6 +44,7 @@ export type SourceAppCredentialSafeMetadata = {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
+  scopes: SourceAppScope[];
 };
 
 export type SourceAppAuthErrorCode =
@@ -74,6 +81,7 @@ function toSafeMetadata(credential: {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
+  scopes: unknown;
   sourceApp: { name: string };
 }): SourceAppCredentialSafeMetadata {
   return {
@@ -88,6 +96,7 @@ function toSafeMetadata(credential: {
     lastUsedAt: credential.lastUsedAt,
     revokedAt: credential.revokedAt,
     createdAt: credential.createdAt,
+    scopes: normalizeSourceAppScopes(credential.scopes),
   };
 }
 
@@ -128,7 +137,7 @@ export async function createSourceAppCredential(input: {
       keyPrefix: extractKeyPrefix(rawKey),
       keyHash: hashSourceAppApiKey(rawKey),
       keyLast4: extractKeyLast4(rawKey),
-      ...(input.scopes ? { scopes: input.scopes } : {}),
+      scopes: input.scopes ?? [...SOURCE_APP_SCOPES],
     },
     select: {
       id: true,
@@ -141,6 +150,7 @@ export async function createSourceAppCredential(input: {
       lastUsedAt: true,
       revokedAt: true,
       createdAt: true,
+      scopes: true,
       sourceApp: { select: { name: true } },
     },
   });
@@ -195,6 +205,7 @@ export async function authenticateSourceAppRequest(
       organizationId: true,
       sourceAppId: true,
       keyHash: true,
+      scopes: true,
       isActive: true,
       revokedAt: true,
       sourceApp: {
@@ -240,6 +251,7 @@ export async function authenticateSourceAppRequest(
       credentialId: credential.id,
       sourceAppName: credential.sourceApp.name,
       sourceAppType: credential.sourceApp.type,
+      scopes: normalizeSourceAppScopes(credential.scopes),
     },
   };
 }
@@ -264,6 +276,7 @@ export async function revokeSourceAppCredential(input: {
       lastUsedAt: true,
       revokedAt: true,
       createdAt: true,
+      scopes: true,
       sourceApp: { select: { name: true } },
     },
   });
@@ -289,6 +302,7 @@ export async function revokeSourceAppCredential(input: {
       lastUsedAt: true,
       revokedAt: true,
       createdAt: true,
+      scopes: true,
       sourceApp: { select: { name: true } },
     },
   });
@@ -317,6 +331,7 @@ export async function listSourceAppCredentials(
       lastUsedAt: true,
       revokedAt: true,
       createdAt: true,
+      scopes: true,
       sourceApp: { select: { name: true } },
     },
   });

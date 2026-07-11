@@ -7,7 +7,8 @@ import {
   LayoutDashboard,
   ListTodo,
   ShieldCheck,
-  Sparkles,
+  KeyRound,
+  ServerCog,
 } from "lucide-react";
 
 export interface DashboardNavItem {
@@ -18,12 +19,6 @@ export interface DashboardNavItem {
 }
 
 export const dashboardNavigation: DashboardNavItem[] = [
-  {
-    href: "/company-ai",
-    label: "Company AI",
-    description: "Internal AI demo workspace",
-    icon: Sparkles,
-  },
   {
     href: "/dashboard",
     label: "Dashboard",
@@ -53,6 +48,18 @@ export const dashboardNavigation: DashboardNavItem[] = [
     label: "Slack",
     description: "Optional connector mappings",
     icon: Hash,
+  },
+  {
+    href: "/settings/source-apps",
+    label: "Source Apps",
+    description: "Credentials and app usage",
+    icon: KeyRound,
+  },
+  {
+    href: "/settings/model-providers",
+    label: "Model Access",
+    description: "Provider and model policy",
+    icon: ServerCog,
   },
   {
     href: "/settings/privacy",

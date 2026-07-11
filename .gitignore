@@ -3,8 +3,10 @@
 
 # next
 /.next
+**/.next
 /out
 /.cache
+packages/*/dist
 *.tsbuildinfo
 
 # environment
@@ -12,6 +14,8 @@
 .env.local
 .env.production.local
 .env.test.local
+mock-company-ai/.env
+mock-company-ai/.env.local
 
 # logs
 npm-debug.log*

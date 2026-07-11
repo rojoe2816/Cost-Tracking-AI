@@ -11,7 +11,7 @@ import {
   type ClientRevenueErrorCode,
   type ClientRevenueMutationNotice,
 } from "@/lib/clients/revenue";
-import { getDemoOrganization } from "@/lib/slack/mappings";
+import { assertAdminSession } from "@/lib/auth/session";
 
 function parseRequiredString(
   value: FormDataEntryValue | null,
@@ -53,24 +53,15 @@ function redirectToClients(input: {
   redirect(queryString ? `/clients?${queryString}` : "/clients");
 }
 
-async function requireDemoOrganizationId(): Promise<string> {
-  const organization = await getDemoOrganization();
-
-  if (!organization) {
-    throw new ClientRevenueWorkflowError(
-      "organization-not-found",
-      "Demo Agency organization not found",
-    );
-  }
-
-  return organization.id;
+async function requireOrganizationId(): Promise<string> {
+  return (await assertAdminSession()).organizationId;
 }
 
 export async function upsertClientRevenueAction(formData: FormData) {
   const month = safeMonthFromForm(formData);
 
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
     const estimatedLaborCostUsd = formData.get("estimatedLaborCostUsd");
 
     const result = await upsertClientRevenueForOrganization({
@@ -108,7 +99,7 @@ export async function clearClientRevenueAction(formData: FormData) {
   const month = safeMonthFromForm(formData);
 
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
     await clearClientRevenueForOrganization({
       organizationId,
       clientId: parseRequiredString(

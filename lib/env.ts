@@ -36,6 +36,10 @@ export const envSchema = z.object({
     32,
     "ENCRYPTION_KEY must be at least 32 characters long",
   ),
+  SESSION_SECRET: z.string().trim().min(32).optional(),
+  SLATE_ADMIN_EMAIL: z.string().trim().email().optional(),
+  SLATE_ADMIN_PASSWORD: z.string().min(12).optional(),
+  SLATE_ADMIN_ORGANIZATION_SLUG: z.string().trim().min(1).optional(),
   // Integration credentials are optional at boot so the app can start
   // without Slack/LiteLLM configured. Routes and jobs that actually need an
   // integration must call assertLiteLLMConfigured()/assertSlackConfigured()
@@ -55,7 +59,6 @@ export const envSchema = z.object({
   SLACK_CLIENT_ID: z.string().trim().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().trim().min(1).optional(),
   SLACK_REDIRECT_URI: z.string().url("SLACK_REDIRECT_URI must be a valid URL").optional(),
-  MOCK_COMPANY_SOURCE_APP_KEY: z.string().trim().min(1).optional(),
   QUEUE_ADAPTER: z.enum(["in-memory", "postgres"]).optional(),
 });
 

@@ -51,6 +51,10 @@ export async function enqueuePostgresJob<TName extends JobName>(
   options: EnqueueJobOptions = {},
 ): Promise<void> {
   const storedPayload = sanitizePayloadForStorage(name, payload);
+  const organizationId =
+    "organizationId" in payload && typeof payload.organizationId === "string"
+      ? payload.organizationId
+      : null;
 
   logger.info(
     {
@@ -65,6 +69,7 @@ export async function enqueuePostgresJob<TName extends JobName>(
   try {
     await db.backgroundJob.create({
       data: {
+        organizationId,
         type: name,
         payloadJson: storedPayload,
         ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
@@ -217,8 +222,12 @@ export async function processClaimedPostgresJob(job: BackgroundJob): Promise<voi
   }
 }
 
-export async function getRecentBackgroundJobs(limit = 20) {
+export async function getRecentBackgroundJobs(
+  organizationId: string,
+  limit = 20,
+) {
   return db.backgroundJob.findMany({
+    where: { organizationId },
     orderBy: { createdAt: "desc" },
     take: limit,
     select: {

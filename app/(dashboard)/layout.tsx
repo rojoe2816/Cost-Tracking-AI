@@ -1,23 +1,34 @@
 import type { ReactNode } from "react";
+import { LogOut } from "lucide-react";
 
+import { signOutAction } from "@/app/(auth)/sign-in/actions";
 import { DashboardNav } from "@/components/dashboard/dashboard-nav";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { Badge } from "@/components/ui/badge";
-import { demoAgency, demoAgencyCounts } from "@/lib/demo-agency";
+import { Button } from "@/components/ui/button";
+import { requireDashboardSession } from "@/lib/auth/session";
+import { db } from "@/lib/db";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: ReactNode;
 }) {
+  const session = await requireDashboardSession();
+  const [clientCount, projectCount, workflowTypeCount] = await db.$transaction([
+    db.client.count({ where: { organizationId: session.organizationId } }),
+    db.project.count({ where: { organizationId: session.organizationId } }),
+    db.workflowType.count({ where: { organizationId: session.organizationId } }),
+  ]);
+
   return (
     <div className="min-h-screen bg-transparent">
       <div className="mx-auto flex min-h-screen max-w-[1600px]">
         <DashboardSidebar
-          organizationName={demoAgency.name}
-          clientCount={demoAgencyCounts.clients}
-          projectCount={demoAgencyCounts.projects}
-          workflowTypeCount={demoAgencyCounts.workflowTypes}
+          organizationName={session.organizationName}
+          clientCount={clientCount}
+          projectCount={projectCount}
+          workflowTypeCount={workflowTypeCount}
         />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 px-6 py-5 backdrop-blur md:px-8">
@@ -28,26 +39,30 @@ export default function DashboardLayout({
                     Internal AI control plane
                   </p>
                   <h1 className="font-heading text-3xl font-semibold tracking-tight">
-                    {demoAgency.name}
+                    {session.organizationName}
                   </h1>
                 </div>
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                  Monitor source-app gateway usage, attribution, and client
-                  profitability for the local Demo Agency workspace. Authentication
-                  is still deferred while the internal AI integration seams settle.
+                  Monitor source-app gateway usage, attribution, credentials, and
+                  client profitability inside this authenticated workspace.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <Badge variant="secondary" className="rounded-full px-3 py-1">
-                  Local integration shell
+                  {session.userName}
                 </Badge>
                 <Badge className="rounded-full bg-primary/10 px-3 py-1 text-primary hover:bg-primary/10">
-                  Auth deferred
+                  {session.role}
                 </Badge>
                 <Badge variant="secondary" className="rounded-full px-3 py-1">
                   Metadata-only default
                 </Badge>
+                <form action={signOutAction}>
+                  <Button type="submit" variant="outline" size="sm" className="gap-2 rounded-full">
+                    <LogOut className="h-4 w-4" /> Sign out
+                  </Button>
+                </form>
               </div>
             </div>
 

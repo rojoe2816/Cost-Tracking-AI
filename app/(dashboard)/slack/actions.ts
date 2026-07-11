@@ -6,10 +6,10 @@ import { redirect } from "next/navigation";
 import {
   createManualSlackChannelMapping,
   deleteManualSlackChannelMapping,
-  getDemoOrganization,
   SlackMappingError,
   updateManualSlackChannelMapping,
 } from "@/lib/slack/mappings";
+import { assertAdminSession } from "@/lib/auth/session";
 import { disconnectSlackWorkspace } from "@/lib/slack/workspace";
 
 function parseRequiredId(value: FormDataEntryValue | null, label: string): string {
@@ -29,19 +29,13 @@ function parseOptionalName(value: FormDataEntryValue | null): string | null {
   return trimmed || null;
 }
 
-async function requireDemoOrganizationId(): Promise<string> {
-  const organization = await getDemoOrganization();
-
-  if (!organization) {
-    throw new SlackMappingError("Demo Agency organization not found");
-  }
-
-  return organization.id;
+async function requireOrganizationId(): Promise<string> {
+  return (await assertAdminSession()).organizationId;
 }
 
 export async function createSlackMappingAction(formData: FormData) {
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
 
     await createManualSlackChannelMapping({
       organizationId,
@@ -65,7 +59,7 @@ export async function createSlackMappingAction(formData: FormData) {
 
 export async function updateSlackMappingAction(formData: FormData) {
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
 
     await updateManualSlackChannelMapping({
       organizationId,
@@ -90,7 +84,7 @@ export async function updateSlackMappingAction(formData: FormData) {
 
 export async function deleteSlackMappingAction(formData: FormData) {
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
 
     await deleteManualSlackChannelMapping({
       organizationId,
@@ -110,7 +104,7 @@ export async function deleteSlackMappingAction(formData: FormData) {
 
 export async function disconnectSlackWorkspaceAction() {
   try {
-    const organizationId = await requireDemoOrganizationId();
+    const organizationId = await requireOrganizationId();
 
     await disconnectSlackWorkspace(organizationId);
 

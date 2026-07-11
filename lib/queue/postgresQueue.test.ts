@@ -66,6 +66,7 @@ describe("enqueuePostgresJob", () => {
 
   it("persists metadata-only payloads", async () => {
     await enqueuePostgresJob("slack.ai_request", {
+      organizationId: "org_a",
       slackTeamId: "T_TEST",
       slackChannelId: "C_TEST",
       slackUserId: "U_TEST",
@@ -75,8 +76,10 @@ describe("enqueuePostgresJob", () => {
 
     expect(mockDb.backgroundJob.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        organizationId: "org_a",
         type: "slack.ai_request",
         payloadJson: {
+          organizationId: "org_a",
           slackTeamId: "T_TEST",
           slackChannelId: "C_TEST",
           slackUserId: "U_TEST",
