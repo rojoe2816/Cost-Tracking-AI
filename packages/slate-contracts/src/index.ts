@@ -43,6 +43,7 @@ export type SlateRunInput = {
   model?: string | null;
   input: string;
   metadata?: Record<string, unknown>;
+  consentToAttributionTraining?: boolean;
   attributionPrediction?: {
     predictedWorkflowExternalId?: string | null;
     predictedTaskType?: string | null;

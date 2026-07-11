@@ -29,9 +29,9 @@
     "phase6:failure:test": "node scripts/run-phase6-failure-tests.mjs",
     "worker": "node --conditions=react-server --import tsx scripts/run-worker.ts",
     "idempotency:race": "node scripts/run-concurrent-idempotency.mjs",
-    "classifier:train": "cd services/attribution-classifier && .venv/bin/python -m app.training",
-    "classifier:evaluate": "cd services/attribution-classifier && .venv/bin/python -m app.evaluate",
-    "classifier:test": "cd services/attribution-classifier && .venv/bin/pytest -q",
+    "classifier:train": "cd services/attribution-classifier && sh ./run-python.sh -m app.training",
+    "classifier:evaluate": "cd services/attribution-classifier && sh ./run-python.sh -m app.evaluate",
+    "classifier:test": "cd services/attribution-classifier && sh ./run-python.sh -m pytest -q",
     "classifier:health": "curl -fsS http://127.0.0.1:8100/health",
     "postinstall": "prisma generate"
   },

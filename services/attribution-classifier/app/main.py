@@ -10,17 +10,20 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from app.auth import require_token
 from app.config import settings
 from app.evaluate import evaluate as run_evaluate
-from app.model import get_active_model
+from app.model import AttributionModel, get_active_model, set_active_model
 from app.schemas import (
     AlternativesBundle,
     ClassifyRequest,
     ClassifyResponse,
+    EvaluateRequest,
     EvaluateResponse,
     HealthResponse,
     LabelScore,
+    PromoteRequest,
+    TrainRequest,
     TrainResponse,
 )
-from app.storage import active_version
+from app.storage import active_version, load_previous_model, save_model
 from app.training import load_or_train, train_from_file
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -34,6 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Attribution Classifier", version="0.1.0", lifespan=lifespan)
+candidate_models: dict[str, AttributionModel] = {}
 
 
 @app.get("/health", response_model=HealthResponse, tags=["ops"])
@@ -92,8 +96,20 @@ def classify(req: ClassifyRequest) -> ClassifyResponse:
     dependencies=[Depends(require_token)],
     tags=["admin"],
 )
-def train() -> TrainResponse:
-    model, duration = train_from_file()
+def train(req: TrainRequest | None = None) -> TrainResponse:
+    additional_records = [
+        {
+            "text": example.text,
+            "workflow": example.workflowExternalId,
+            "task_type": example.taskType,
+        }
+        for example in (req.examples if req else [])
+    ]
+    model, duration = train_from_file(
+        additional_records=additional_records,
+        activate=False,
+    )
+    candidate_models[model.version] = model
     return TrainResponse(
         modelVersion=model.version,
         trainingSamples=model.n_samples,
@@ -107,15 +123,55 @@ def train() -> TrainResponse:
     dependencies=[Depends(require_token)],
     tags=["admin"],
 )
-def evaluate_endpoint() -> EvaluateResponse:
-    model = get_active_model()
+def evaluate_endpoint(req: EvaluateRequest | None = None) -> EvaluateResponse:
+    model = (
+        candidate_models.get(req.modelVersion)
+        if req and req.modelVersion
+        else get_active_model()
+    )
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model not available — run /v1/train first",
+            detail="Requested model is not available — run /v1/train first",
         )
     metrics = run_evaluate(model)
     return EvaluateResponse(**metrics)
+
+
+@app.post(
+    "/v1/promote",
+    response_model=HealthResponse,
+    dependencies=[Depends(require_token)],
+    tags=["admin"],
+)
+def promote(req: PromoteRequest) -> HealthResponse:
+    model = candidate_models.pop(req.modelVersion, None)
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate model not found",
+        )
+    save_model(model, model.version)
+    set_active_model(model)
+    return HealthResponse(status="ok", modelVersion=model.version)
+
+
+@app.post(
+    "/v1/rollback",
+    response_model=HealthResponse,
+    dependencies=[Depends(require_token)],
+    tags=["admin"],
+)
+def rollback() -> HealthResponse:
+    model, version = load_previous_model()
+    if model is None or version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Previous model not found",
+        )
+    save_model(model, version)
+    set_active_model(model)
+    return HealthResponse(status="ok", modelVersion=version)
 
 
 def serve() -> None:

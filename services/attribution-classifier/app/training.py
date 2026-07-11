@@ -33,9 +33,16 @@ def load_jsonl(path: Path) -> list[dict]:
     return records
 
 
-def train_from_file(data_path: Path | None = None) -> tuple[AttributionModel, float]:
+def train_from_file(
+    data_path: Path | None = None,
+    additional_records: list[dict] | None = None,
+    *,
+    activate: bool = True,
+) -> tuple[AttributionModel, float]:
     path = data_path or settings.model_data_path
     records = load_jsonl(path)
+    if additional_records:
+        records.extend(additional_records)
     if not records:
         raise ValueError(f"No training records found in {path}")
 
@@ -46,9 +53,10 @@ def train_from_file(data_path: Path | None = None) -> tuple[AttributionModel, fl
     duration = time.perf_counter() - t0
     logger.info("Training complete in %.2fs — version=%s", duration, version)
 
-    save_model(model, version)
-    set_active_model(model)
-    logger.info("Model saved to %s", settings.artifacts_dir)
+    if activate:
+        save_model(model, version)
+        set_active_model(model)
+        logger.info("Model saved to %s", settings.artifacts_dir)
     return model, duration
 
 

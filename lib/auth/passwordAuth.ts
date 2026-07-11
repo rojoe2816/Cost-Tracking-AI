@@ -108,6 +108,7 @@ export async function changePasswordForUser(input: {
   userId: string;
   currentPassword: string;
   newPassword: string;
+  confirmPassword: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const credential = await db.passwordCredential.findUnique({
     where: { userId: input.userId },
@@ -123,6 +124,10 @@ export async function changePasswordForUser(input: {
   );
   if (!valid) {
     return { ok: false, error: "Current password is incorrect." };
+  }
+
+  if (input.newPassword !== input.confirmPassword) {
+    return { ok: false, error: "New passwords do not match." };
   }
 
   if (process.env.NODE_ENV === "production" && isWeakPassword(input.newPassword)) {

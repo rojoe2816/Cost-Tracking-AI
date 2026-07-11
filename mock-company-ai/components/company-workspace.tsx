@@ -89,6 +89,7 @@ export function CompanyWorkspace() {
   const [model, setModel] = useState("");
   const [taskType, setTaskType] = useState("client_update");
   const [prompt, setPrompt] = useState("");
+  const [consentToTraining, setConsentToTraining] = useState(false);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -225,6 +226,7 @@ export function CompanyWorkspace() {
           sourceAppRequestId: sourceAppRequestIdRef.current,
           model,
           input: prompt,
+          consentToAttributionTraining: consentToTraining,
           attributionPrediction: suggestion
             ? {
                 predictedWorkflowExternalId: suggestion.workflowExternalId,
@@ -245,6 +247,7 @@ export function CompanyWorkspace() {
       }
 
       setResult(body as SlateRunResult);
+      setConsentToTraining(false);
       sourceAppRequestIdRef.current = `northwind-${crypto.randomUUID()}`;
     } catch {
       setError({
@@ -456,6 +459,21 @@ export function CompanyWorkspace() {
               />
             </div>
           ) : null}
+
+          <label className="field" style={{ marginTop: "1rem" }}>
+            <span>
+              <input
+                type="checkbox"
+                checked={consentToTraining}
+                onChange={(event) => setConsentToTraining(event.target.checked)}
+              />{" "}
+              Use this task to improve attribution
+            </span>
+            <small>
+              Optional. Slate encrypts the task text and stores it only when the
+              workspace privacy setting also allows training.
+            </small>
+          </label>
 
           <button className="submit-button" type="button" disabled={!canSubmit} onClick={submit}>
             {submitting ? "Routing securely through Slate…" : "Generate with AI"}

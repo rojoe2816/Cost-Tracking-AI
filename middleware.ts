@@ -6,6 +6,22 @@ function isLocalHost(host: string): boolean {
   return host.startsWith("localhost") || host.startsWith("127.0.0.1");
 }
 
+const DASHBOARD_SESSION_COOKIE = "slate_dashboard_session";
+const PROTECTED_PATH_PREFIXES = [
+  "/dashboard",
+  "/clients",
+  "/projects",
+  "/jobs",
+  "/privacy",
+  "/settings",
+];
+
+function isProtectedDashboardPath(pathname: string): boolean {
+  return PROTECTED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function middleware(request: NextRequest) {
   const forwardedProtocol = request.headers.get("x-forwarded-proto");
   const host = request.headers.get("host") ?? "";
@@ -27,6 +43,20 @@ export function middleware(request: NextRequest) {
         { status: 426 },
       ),
     );
+  }
+
+  if (
+    isProtectedDashboardPath(request.nextUrl.pathname) &&
+    !request.cookies.has(DASHBOARD_SESSION_COOKIE)
+  ) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set(
+      "next",
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return applySecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
   const response = NextResponse.next();

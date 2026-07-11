@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAiAttributionDecision } from "@/lib/attribution/decisions";
+import { createConsentedTrainingExample } from "@/lib/attribution/training";
 import {
   createAiUsageEvent,
   createProcessingAiRequestAudit,
@@ -292,6 +293,15 @@ export async function processInternalAiGatewayRequest(input: {
           : {}),
         predictedWorkflowTypeId,
       });
+
+      if (body.consentToAttributionTraining) {
+        await createConsentedTrainingExample({
+          organizationId: auth.value.organizationId,
+          text: body.input,
+          finalWorkflowTypeId: attribution.value.workflowTypeId,
+          finalTaskType: attribution.value.taskType,
+        });
+      }
     }
 
     logger.info(

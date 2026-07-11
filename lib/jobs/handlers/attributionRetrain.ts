@@ -57,7 +57,7 @@ export async function handleAttributionRetrainJob(
 
   const trained = (await trainResponse.json()) as {
     modelVersion?: string;
-    sampleCount?: number;
+    trainingSamples?: number;
   };
 
   const evaluateResponse = await fetch(`${baseUrl}/v1/evaluate`, {
@@ -78,13 +78,22 @@ export async function handleAttributionRetrainJob(
   }
 
   const evaluation = (await evaluateResponse.json()) as {
-    macroF1?: number;
-    top2Accuracy?: number;
-    accuracy?: number;
+    workflowAccuracy?: number;
+    workflowMacroF1?: number;
+    workflowTop2Accuracy?: number;
+    taskTypeAccuracy?: number;
+    taskTypeMacroF1?: number;
+    taskTypeTop2Accuracy?: number;
   };
 
-  const macroF1 = evaluation.macroF1 ?? 0;
-  const top2Accuracy = evaluation.top2Accuracy ?? 0;
+  const macroF1 = Math.min(
+    evaluation.workflowMacroF1 ?? 0,
+    evaluation.taskTypeMacroF1 ?? 0,
+  );
+  const top2Accuracy = Math.min(
+    evaluation.workflowTop2Accuracy ?? 0,
+    evaluation.taskTypeTop2Accuracy ?? 0,
+  );
   const version = trained.modelVersion ?? `retrain-${Date.now()}`;
   const checksum = createHash("sha256")
     .update(JSON.stringify({ version, macroF1, top2Accuracy, n: examples.length }))
@@ -116,6 +125,19 @@ export async function handleAttributionRetrainJob(
       "Rejected attribution model candidate",
     );
     return;
+  }
+
+  const promoteResponse = await fetch(`${baseUrl}/v1/promote`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ modelVersion: version }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!promoteResponse.ok) {
+    throw new Error("Attribution model promotion request failed.");
   }
 
   await db.$transaction([

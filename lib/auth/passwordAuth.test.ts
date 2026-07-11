@@ -125,10 +125,32 @@ describe("password authentication", () => {
         userId: "user_1",
         currentPassword: "wrong",
         newPassword: "new-secret",
+        confirmPassword: "new-secret",
       }),
     ).resolves.toEqual({
       ok: false,
       error: "Current password is incorrect.",
     });
+  });
+
+  it("rejects mismatched password confirmation before hashing", async () => {
+    mockDb.passwordCredential.findUnique.mockResolvedValue({
+      id: "cred_1",
+      passwordHash: "hash",
+    });
+    mockVerifyPassword.mockResolvedValue(true);
+
+    await expect(
+      changePasswordForUser({
+        userId: "user_1",
+        currentPassword: "current-secret",
+        newPassword: "new-secret",
+        confirmPassword: "different-secret",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "New passwords do not match.",
+    });
+    expect(mockHashPassword).not.toHaveBeenCalled();
   });
 });

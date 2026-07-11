@@ -1,4 +1,5 @@
 import { requireAdminSession } from "@/lib/auth/session";
+import { evaluateAttributionClassifier } from "@/lib/attribution/client";
 import { getAttributionQualityReport } from "@/lib/attribution/decisions";
 import { listTrainingExamplesForAdmin } from "@/lib/attribution/training";
 import { softDeleteTrainingExampleAction } from "@/app/(dashboard)/settings/attribution/actions";
@@ -6,9 +7,10 @@ import { Button } from "@/components/ui/button";
 
 export default async function AttributionSettingsPage() {
   const session = await requireAdminSession();
-  const [report, examples] = await Promise.all([
+  const [report, examples, liveEvaluation] = await Promise.all([
     getAttributionQualityReport(session.organizationId),
     listTrainingExamplesForAdmin(session.organizationId),
+    evaluateAttributionClassifier().catch(() => null),
   ]);
 
   return (
@@ -27,21 +29,50 @@ export default async function AttributionSettingsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Active model" value={report.activeModelVersion ?? "None"} />
         <Metric
-          label="Holdout macro F1"
+          label="Active model"
+          value={liveEvaluation?.modelVersion ?? report.activeModelVersion ?? "None"}
+        />
+        <Metric
+          label="Workflow macro F1"
           value={
+            liveEvaluation?.workflowMacroF1 == null &&
             report.holdoutMacroF1 == null
               ? "—"
-              : report.holdoutMacroF1.toFixed(3)
+              : (
+                  liveEvaluation?.workflowMacroF1 ??
+                  report.holdoutMacroF1 ??
+                  0
+                ).toFixed(3)
           }
         />
         <Metric
-          label="Top-2 accuracy"
+          label="Task macro F1"
           value={
+            liveEvaluation?.taskTypeMacroF1 == null
+              ? "—"
+              : liveEvaluation.taskTypeMacroF1.toFixed(3)
+          }
+        />
+        <Metric
+          label="Workflow top-2"
+          value={
+            liveEvaluation?.workflowTop2Accuracy == null &&
             report.holdoutTop2Accuracy == null
               ? "—"
-              : report.holdoutTop2Accuracy.toFixed(3)
+              : (
+                  liveEvaluation?.workflowTop2Accuracy ??
+                  report.holdoutTop2Accuracy ??
+                  0
+                ).toFixed(3)
+          }
+        />
+        <Metric
+          label="Task top-2"
+          value={
+            liveEvaluation?.taskTypeTop2Accuracy == null
+              ? "—"
+              : liveEvaluation.taskTypeTop2Accuracy.toFixed(3)
           }
         />
         <Metric label="Predictions" value={String(report.predictionCount)} />

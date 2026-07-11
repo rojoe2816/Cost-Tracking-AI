@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from app.config import settings
 
 _ACTIVE_FILENAME = "model_active.joblib"
 _VERSION_FILENAME = "model_version.txt"
+_PREVIOUS_FILENAME = "model_previous.joblib"
+_PREVIOUS_VERSION_FILENAME = "model_previous_version.txt"
 
 
 def artifacts_dir() -> Path:
@@ -24,6 +27,22 @@ def save_model(payload: object, version: str) -> Path:
     d = artifacts_dir()
     # Write model
     model_path = d / _ACTIVE_FILENAME
+    version_path = d / _VERSION_FILENAME
+    if model_path.exists():
+        previous_model_path = d / _PREVIOUS_FILENAME
+        previous_version_path = d / _PREVIOUS_VERSION_FILENAME
+        with tempfile.NamedTemporaryFile(dir=d, suffix=".tmp", delete=False) as tmp:
+            previous_model_tmp = Path(tmp.name)
+        shutil.copy2(model_path, previous_model_tmp)
+        os.replace(previous_model_tmp, previous_model_path)
+        if version_path.exists():
+            with tempfile.NamedTemporaryFile(
+                dir=d, suffix=".tmp", mode="w", delete=False
+            ) as tmp:
+                tmp.write(version_path.read_text())
+                previous_version_tmp = Path(tmp.name)
+            os.replace(previous_version_tmp, previous_version_path)
+
     with tempfile.NamedTemporaryFile(dir=d, suffix=".tmp", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
@@ -33,7 +52,6 @@ def save_model(payload: object, version: str) -> Path:
         tmp_path.unlink(missing_ok=True)
         raise
     # Write version marker
-    version_path = d / _VERSION_FILENAME
     with tempfile.NamedTemporaryFile(
         dir=d, suffix=".tmp", mode="w", delete=False
     ) as tmp:
@@ -45,6 +63,15 @@ def save_model(payload: object, version: str) -> Path:
         Path(tmp_path2).unlink(missing_ok=True)
         raise
     return model_path
+
+
+def load_previous_model() -> tuple[object, str] | tuple[None, None]:
+    d = artifacts_dir()
+    model_path = d / _PREVIOUS_FILENAME
+    version_path = d / _PREVIOUS_VERSION_FILENAME
+    if not model_path.exists() or not version_path.exists():
+        return None, None
+    return joblib.load(model_path), version_path.read_text().strip()
 
 
 def load_model() -> tuple[object, str] | tuple[None, None]:

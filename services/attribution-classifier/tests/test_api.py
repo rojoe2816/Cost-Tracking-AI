@@ -304,3 +304,50 @@ async def test_evaluate_f1_above_threshold(client: AsyncClient):
     body = r.json()
     assert body["workflowMacroF1"] >= 0.50, f"workflow F1 too low: {body['workflowMacroF1']}"
     assert body["taskTypeMacroF1"] >= 0.50, f"task_type F1 too low: {body['taskTypeMacroF1']}"
+
+
+@pytest.mark.asyncio
+async def test_consented_example_candidate_requires_explicit_promotion(
+    client: AsyncClient,
+):
+    before = (await client.get("/health")).json()["modelVersion"]
+    trained = await client.post(
+        "/v1/train",
+        headers=AUTH,
+        json={
+            "organizationId": "org_test",
+            "examples": [
+                {
+                    "text": "A consented synthetic client update example.",
+                    "workflowExternalId": "client-update",
+                    "taskType": "client_update",
+                }
+            ],
+        },
+    )
+    assert trained.status_code == 200
+    candidate = trained.json()
+    assert candidate["trainingSamples"] == 210
+    assert (await client.get("/health")).json()["modelVersion"] == before
+
+    evaluated = await client.post(
+        "/v1/evaluate",
+        headers=AUTH,
+        json={"organizationId": "org_test", "modelVersion": candidate["modelVersion"]},
+    )
+    assert evaluated.status_code == 200
+    assert evaluated.json()["modelVersion"] == candidate["modelVersion"]
+
+    promoted = await client.post(
+        "/v1/promote",
+        headers=AUTH,
+        json={"modelVersion": candidate["modelVersion"]},
+    )
+    assert promoted.status_code == 200
+    assert promoted.json()["modelVersion"] == candidate["modelVersion"]
+    assert (await client.get("/health")).json()["modelVersion"] == candidate["modelVersion"]
+
+    rolled_back = await client.post("/v1/rollback", headers=AUTH)
+    assert rolled_back.status_code == 200
+    assert rolled_back.json()["modelVersion"] == before
+    assert (await client.get("/health")).json()["modelVersion"] == before

@@ -26,6 +26,7 @@ export const internalAiGatewayRequestSchema = z
     model: z.string().trim().min(1).optional().nullable(),
     input: z.string().trim().min(1).max(MAX_GATEWAY_INPUT_LENGTH),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    consentToAttributionTraining: z.boolean().optional(),
     attributionPrediction: z
       .object({
         predictedWorkflowExternalId: z.string().trim().min(1).max(128).optional().nullable(),

@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         text,
-        allowedWorkflows,
+        allowedWorkflows: allowedWorkflows.map((workflow) => workflow.externalId),
         allowedTaskTypes: [...TASK_TYPES],
       }),
       signal: AbortSignal.timeout(8_000),

@@ -62,6 +62,15 @@ export default async function ChangePasswordPage(props: {
               required
             />
           </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium">Confirm new password</span>
+            <Input
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+            />
+          </label>
           <Button type="submit" className="w-full rounded-full">
             Update password
           </Button>

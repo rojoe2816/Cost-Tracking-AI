@@ -16,6 +16,17 @@ export type ClassificationResult = {
   requiresReview: boolean;
 };
 
+export type AttributionEvaluation = {
+  modelVersion: string;
+  holdoutSamples: number;
+  workflowAccuracy: number;
+  workflowMacroF1: number;
+  workflowTop2Accuracy: number;
+  taskTypeAccuracy: number;
+  taskTypeMacroF1: number;
+  taskTypeTop2Accuracy: number;
+};
+
 export class AttributionClientError extends Error {
   constructor(
     message: string,
@@ -85,5 +96,57 @@ export async function classifyAttribution(input: {
     );
   }
 
+  return body;
+}
+
+export async function evaluateAttributionClassifier(): Promise<AttributionEvaluation> {
+  const baseUrl = env.ATTRIBUTION_SERVICE_URL?.replace(/\/$/, "");
+  const token = env.ATTRIBUTION_SERVICE_TOKEN;
+  if (!baseUrl || !token) {
+    throw new AttributionClientError(
+      "Attribution service is not configured.",
+      "ATTRIBUTION_NOT_CONFIGURED",
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/v1/evaluate`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    });
+  } catch {
+    throw new AttributionClientError(
+      "Attribution service is unavailable.",
+      "ATTRIBUTION_UNAVAILABLE",
+    );
+  }
+
+  if (!response.ok) {
+    throw new AttributionClientError(
+      "Attribution service rejected the request.",
+      "ATTRIBUTION_REJECTED",
+    );
+  }
+
+  const body = (await response.json()) as AttributionEvaluation;
+  if (
+    !body.modelVersion ||
+    typeof body.workflowMacroF1 !== "number" ||
+    typeof body.taskTypeMacroF1 !== "number" ||
+    typeof body.workflowTop2Accuracy !== "number" ||
+    typeof body.taskTypeTop2Accuracy !== "number"
+  ) {
+    throw new AttributionClientError(
+      "Attribution service returned an invalid payload.",
+      "ATTRIBUTION_INVALID_RESPONSE",
+    );
+  }
   return body;
 }

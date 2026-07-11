@@ -7,6 +7,7 @@ const mockCreateProcessingAiRequestAudit = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestCompleted = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestFailed = vi.hoisted(() => vi.fn());
 const mockCreateAiUsageEvent = vi.hoisted(() => vi.fn());
+const mockCreateConsentedTrainingExample = vi.hoisted(() => vi.fn());
 const mockSendLiteLlmChatCompletion = vi.hoisted(() => vi.fn());
 const mockResolveLiteLlmCompletionForPersistence = vi.hoisted(() => vi.fn());
 const mockDb = vi.hoisted(() => ({
@@ -57,6 +58,9 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/attribution/decisions", () => ({
   createAiAttributionDecision: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/attribution/training", () => ({
+  createConsentedTrainingExample: mockCreateConsentedTrainingExample,
 }));
 
 import { processInternalAiGatewayRequest } from "./gateway";
@@ -165,6 +169,7 @@ describe("processInternalAiGatewayRequest", () => {
     mockMarkAiRequestCompleted.mockResolvedValue(undefined);
     mockMarkAiRequestFailed.mockResolvedValue(undefined);
     mockCreateAiUsageEvent.mockResolvedValue(undefined);
+    mockCreateConsentedTrainingExample.mockResolvedValue({ created: true });
   });
 
   it("rejects missing bearer token with 401", async () => {
@@ -411,6 +416,29 @@ describe("processInternalAiGatewayRequest", () => {
       AUDIT_ID,
       "litellm-req-gateway-1",
     );
+  });
+
+  it("stores encrypted training text only with explicit consent", async () => {
+    await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: { ...VALID_BODY, consentToAttributionTraining: true },
+    });
+
+    expect(mockCreateConsentedTrainingExample).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      text: VALID_BODY.input,
+      finalWorkflowTypeId: WORKFLOW_ID,
+      finalTaskType: "client_update",
+    });
+  });
+
+  it("does not store training text by default", async () => {
+    await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: VALID_BODY,
+    });
+
+    expect(mockCreateConsentedTrainingExample).not.toHaveBeenCalled();
   });
 
   it("marks audit failed and skips usage event when LiteLLM fails", async () => {

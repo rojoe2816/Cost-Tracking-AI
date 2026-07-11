@@ -63,6 +63,7 @@ export async function changePasswordAction(formData: FormData): Promise<never> {
     userId: session.userId,
     currentPassword: field(formData, "currentPassword"),
     newPassword: field(formData, "newPassword"),
+    confirmPassword: field(formData, "confirmPassword"),
   });
 
   if (!result.ok) {
