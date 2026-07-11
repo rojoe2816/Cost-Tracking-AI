@@ -1,6 +1,9 @@
 import type { SlackMappingStatus } from "@/lib/slack/attribution";
 
-export type JobName = "slack.ai_request" | "slack.interactivity";
+export type JobName =
+  | "slack.ai_request"
+  | "slack.interactivity"
+  | "attribution.retrain";
 
 export type SlackAiRequestJobPayload = {
   organizationId?: string | null;
@@ -33,9 +36,14 @@ export type SlackInteractivityJobPayload = {
   selectedWorkflowTypeId?: string | null;
 };
 
+export type AttributionRetrainJobPayload = {
+  organizationId: string;
+};
+
 export type JobPayloadByName = {
   "slack.ai_request": SlackAiRequestJobPayload;
   "slack.interactivity": SlackInteractivityJobPayload;
+  "attribution.retrain": AttributionRetrainJobPayload;
 };
 
 export type EnqueueJobOptions = {

@@ -44,6 +44,44 @@ async function main() {
     },
   });
 
+  const seedUsername = process.env.SEED_ADMIN_USERNAME?.trim().toLowerCase();
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (seedUsername && seedPassword) {
+    if (
+      process.env.NODE_ENV === "production" &&
+      (seedPassword.length < 8 ||
+        ["2816", "password", "password123"].includes(seedPassword.toLowerCase()))
+    ) {
+      throw new Error("Weak SEED_ADMIN_PASSWORD is not allowed in production.");
+    }
+
+    const { hash } = await import("@node-rs/argon2");
+    const passwordHash = await hash(seedPassword, {
+      memoryCost: 19456,
+      timeCost: 2,
+      parallelism: 1,
+      outputLen: 32,
+    });
+
+    await prisma.passwordCredential.upsert({
+      where: { userId: owner.id },
+      update: {
+        username: seedUsername,
+        passwordHash,
+        mustChangePassword: true,
+        failedAttemptCount: 0,
+        lockedUntil: null,
+        passwordChangedAt: new Date(),
+      },
+      create: {
+        userId: owner.id,
+        username: seedUsername,
+        passwordHash,
+        mustChangePassword: true,
+      },
+    });
+  }
+
   for (const client of demoAgency.clients) {
     const persistedClient = await prisma.client.upsert({
       where: {

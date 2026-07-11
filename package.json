@@ -27,10 +27,16 @@
     "gateway:v1:direct:smoke": "node --conditions=react-server --import tsx scripts/run-public-gateway-direct-smoke.ts",
     "two-app:integration:test": "node scripts/run-two-app-integration.mjs",
     "phase6:failure:test": "node scripts/run-phase6-failure-tests.mjs",
-    "worker": "tsx scripts/run-worker.ts",
+    "worker": "node --conditions=react-server --import tsx scripts/run-worker.ts",
+    "idempotency:race": "node scripts/run-concurrent-idempotency.mjs",
+    "classifier:train": "cd services/attribution-classifier && .venv/bin/python -m app.training",
+    "classifier:evaluate": "cd services/attribution-classifier && .venv/bin/python -m app.evaluate",
+    "classifier:test": "cd services/attribution-classifier && .venv/bin/pytest -q",
+    "classifier:health": "curl -fsS http://127.0.0.1:8100/health",
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "@prisma/client": "^6.19.3",
     "@radix-ui/react-separator": "^1.1.9",
     "@radix-ui/react-slot": "^1.2.5",

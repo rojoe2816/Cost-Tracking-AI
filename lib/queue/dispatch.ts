@@ -1,5 +1,6 @@
 import "server-only";
 
+import { handleAttributionRetrainJob } from "@/lib/jobs/handlers/attributionRetrain";
 import { handleSlackAiRequestJob } from "@/lib/jobs/handlers/slackAiRequest";
 import { logger } from "@/lib/logger";
 import { handleSlackInteractivityJob } from "@/lib/slack/interactivity";
@@ -16,6 +17,11 @@ export async function dispatchBackgroundJob<TName extends JobName>(
     case "slack.interactivity":
       await handleSlackInteractivityJob(
         payload as JobPayloadByName["slack.interactivity"],
+      );
+      return;
+    case "attribution.retrain":
+      await handleAttributionRetrainJob(
+        payload as JobPayloadByName["attribution.retrain"],
       );
       return;
     default: {

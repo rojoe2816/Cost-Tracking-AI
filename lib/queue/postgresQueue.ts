@@ -40,6 +40,13 @@ function safeJobMetadata<TName extends JobName>(
     return safeSlackAiRequestJobMetadata(payload as SlackAiRequestJobPayload);
   }
 
+  if (name === "attribution.retrain") {
+    return {
+      organizationId: (payload as JobPayloadByName["attribution.retrain"])
+        .organizationId,
+    };
+  }
+
   return safeSlackInteractivityJobMetadata(
     payload as JobPayloadByName["slack.interactivity"],
   );

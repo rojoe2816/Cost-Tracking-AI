@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, phase-7-login-ai-attribution]
+  pull_request:
+    branches: [main]
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cost_tracking_ai
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cost_tracking_ai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_BASE_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5433/cost_tracking_ai?schema=public
+      ENCRYPTION_KEY: ci-only-encryption-key-change-me-32
+      SESSION_SECRET: ci-only-session-secret-change-me-32chars
+      QUEUE_ADAPTER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:packages
+      - name: Secret scan
+        run: |
+          ! git grep -E 'slate_app_sk_[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|xoxb-[0-9-]{10,}' -- ':!.env.example' ':!mock-company-ai/.env.example' ':!**/*.test.ts' ':!**/holdout_test.jsonl' ':!**/base_training.jsonl' || true
+          git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v example && exit 1 || true
+
+  python-classifier:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/attribution-classifier
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: pytest -q
+      - run: python -m app.training
+      - run: python -m app.evaluate
+
+  docker-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config

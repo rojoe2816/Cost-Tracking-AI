@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createAiAttributionDecision } from "@/lib/attribution/decisions";
 import {
   createAiUsageEvent,
   createProcessingAiRequestAudit,
@@ -263,6 +264,35 @@ export async function processInternalAiGatewayRequest(input: {
       sourceAppId: auth.value.sourceAppId,
       taskType: attribution.value.taskType,
     });
+
+    if (attribution.value.workflowTypeId && attribution.value.taskType) {
+      let predictedWorkflowTypeId: string | null = null;
+      const predictedWorkflowExternalId =
+        body.attributionPrediction?.predictedWorkflowExternalId ?? null;
+      if (predictedWorkflowExternalId) {
+        const predictedWorkflow = await db.workflowType.findFirst({
+          where: {
+            organizationId: auth.value.organizationId,
+            externalId: predictedWorkflowExternalId,
+          },
+          select: { id: true },
+        });
+        predictedWorkflowTypeId = predictedWorkflow?.id ?? null;
+      }
+
+      await createAiAttributionDecision({
+        organizationId: auth.value.organizationId,
+        aiRequestAuditId: audit.id,
+        sourceAppId: auth.value.sourceAppId,
+        employeeId: attribution.value.employeeId,
+        finalWorkflowTypeId: attribution.value.workflowTypeId,
+        finalTaskType: attribution.value.taskType,
+        ...(body.attributionPrediction
+          ? { prediction: body.attributionPrediction }
+          : {}),
+        predictedWorkflowTypeId,
+      });
+    }
 
     logger.info(
       {

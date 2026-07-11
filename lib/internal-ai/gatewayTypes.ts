@@ -26,6 +26,18 @@ export const internalAiGatewayRequestSchema = z
     model: z.string().trim().min(1).optional().nullable(),
     input: z.string().trim().min(1).max(MAX_GATEWAY_INPUT_LENGTH),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    attributionPrediction: z
+      .object({
+        predictedWorkflowExternalId: z.string().trim().min(1).max(128).optional().nullable(),
+        predictedTaskType: z.string().trim().min(1).max(80).optional().nullable(),
+        confidence: z.number().min(0).max(1).optional().nullable(),
+        modelVersion: z.string().trim().min(1).max(128).optional().nullable(),
+        wasOverridden: z.boolean().optional().nullable(),
+        requiredReview: z.boolean().optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
   })
   .strict()
   .superRefine((value, context) => {

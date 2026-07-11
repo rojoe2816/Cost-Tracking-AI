@@ -7,11 +7,11 @@ config({ path: ".env" });
 config({ path: "mock-company-ai/.env.local" });
 
 const prisma = new PrismaClient();
-const slateBaseUrl = (process.env.SLATE_BASE_URL || "http://localhost:3000").replace(
+const slateBaseUrl = (process.env.SLATE_BASE_URL || "http://127.0.0.1:3000").replace(
   /\/$/,
   "",
 );
-const mockBaseUrl = (process.env.MOCK_COMPANY_BASE_URL || "http://localhost:3100").replace(
+const mockBaseUrl = (process.env.MOCK_COMPANY_BASE_URL || "http://127.0.0.1:3100").replace(
   /\/$/,
   "",
 );
@@ -67,6 +67,7 @@ async function main() {
   assert(health.response.ok && health.body?.ok, "Slate health check failed");
 
   const employeeExternalId = `integration-employee-${Date.now()}`;
+  const employeeName = `Two App Integration User ${employeeExternalId}`;
   const synced = await jsonRequest(
     `${slateBaseUrl}/api/v1/context/employees/sync`,
     {
@@ -79,15 +80,18 @@ async function main() {
         employees: [
           {
             externalId: employeeExternalId,
-            name: "Two App Integration User",
-            email: "integration@northwind.test",
+            name: employeeName,
+            email: `${employeeExternalId}@northwind.test`,
             department: "Quality",
           },
         ],
       }),
     },
   );
-  assert(synced.response.ok && synced.body?.synced === 1, "Employee sync failed");
+  assert(
+    synced.response.ok && synced.body?.synced === 1,
+    `Employee sync failed (${synced.response.status}): ${JSON.stringify(synced.body)}`,
+  );
 
   const contextResult = await jsonRequest(`${mockBaseUrl}/api/context`);
   assert(contextResult.response.ok, "Mock app could not load context through Slate");

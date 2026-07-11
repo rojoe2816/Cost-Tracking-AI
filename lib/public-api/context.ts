@@ -169,34 +169,51 @@ export async function syncEmployees(
     return { ok: false, code: "INVALID_BODY", message: parsed.error.issues[0]?.message ?? "Invalid employees." };
   }
 
-  await db.$transaction(
-    parsed.data.employees.map((employee) =>
-      db.employee.upsert({
-        where: {
-          organizationId_externalId: {
+  try {
+    await db.$transaction(
+      parsed.data.employees.map((employee) =>
+        db.employee.upsert({
+          where: {
+            organizationId_externalId: {
+              organizationId,
+              externalId: employee.externalId,
+            },
+          },
+          update: {
+            name: employee.name,
+            email: employee.email ?? null,
+            department: employee.department ?? null,
+            role: employee.role ?? null,
+            isActive: employee.isActive ?? true,
+          },
+          create: {
             organizationId,
             externalId: employee.externalId,
+            name: employee.name,
+            email: employee.email ?? null,
+            department: employee.department ?? null,
+            role: employee.role ?? null,
+            isActive: employee.isActive ?? true,
           },
-        },
-        update: {
-          name: employee.name,
-          email: employee.email ?? null,
-          department: employee.department ?? null,
-          role: employee.role ?? null,
-          isActive: employee.isActive ?? true,
-        },
-        create: {
-          organizationId,
-          externalId: employee.externalId,
-          name: employee.name,
-          email: employee.email ?? null,
-          department: employee.department ?? null,
-          role: employee.role ?? null,
-          isActive: employee.isActive ?? true,
-        },
-      }),
-    ),
-  );
+        }),
+      ),
+    );
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return {
+        ok: false,
+        code: "EMPLOYEE_CONFLICT",
+        message:
+          "Employee sync conflicted with an existing name or external id in this organization.",
+      };
+    }
+    throw error;
+  }
 
   return { ok: true, count: parsed.data.employees.length };
 }

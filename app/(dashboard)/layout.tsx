@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { LogOut } from "lucide-react";
 
-import { signOutAction } from "@/app/(auth)/sign-in/actions";
+import { logoutAction } from "@/app/(auth)/login/actions";
 import { DashboardNav } from "@/components/dashboard/dashboard-nav";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +58,7 @@ export default async function DashboardLayout({
                 <Badge variant="secondary" className="rounded-full px-3 py-1">
                   Metadata-only default
                 </Badge>
-                <form action={signOutAction}>
+                <form action={logoutAction}>
                   <Button type="submit" variant="outline" size="sm" className="gap-2 rounded-full">
                     <LogOut className="h-4 w-4" /> Sign out
                   </Button>

@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { logger } from "@/lib/logger";
+import { recordWorkerHeartbeat } from "@/lib/public-api/health";
 import {
   claimNextPostgresJob,
   processClaimedPostgresJob,
@@ -57,6 +58,8 @@ export async function runWorkerLoop(
         break;
       }
     }
+
+    await recordWorkerHeartbeat(workerId);
 
     if (processed === 0) {
       await sleep(pollIntervalMs);

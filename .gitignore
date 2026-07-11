@@ -31,3 +31,12 @@ cost_tracking_ai_dev_dump.*
 *.dump
 *.backup
 *_dump.zip
+
+# runtime / ML artifacts
+.data/
+services/attribution-classifier/.venv/
+services/attribution-classifier/artifacts/
+services/attribution-classifier/*.egg-info/
+services/attribution-classifier/**/__pycache__/
+services/attribution-classifier/**/*.pyc
+*.joblib

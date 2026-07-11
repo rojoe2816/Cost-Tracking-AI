@@ -6,26 +6,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const TASK_TYPES = [
   ["client_update", "Client update"],
   ["support_summary", "Support summary"],
-  ["project_risk_note", "Project risk note"],
+  ["sales_followup", "Sales follow-up"],
   ["research_note", "Research note"],
+  ["project_risk_summary", "Project risk summary"],
 ] as const;
 
 const EXAMPLES = [
   {
     label: "Weekly client update",
-    taskType: "client_update",
     prompt:
       "Draft a concise weekly client update with progress, next actions, and one risk to monitor.",
   },
   {
     label: "Project risk note",
-    taskType: "project_risk_note",
     prompt:
       "Write a short internal risk note covering timeline pressure, owner, impact, and mitigation.",
   },
   {
     label: "Research brief",
-    taskType: "research_note",
     prompt:
       "Summarize three practical research questions we should answer before the next client meeting.",
   },
@@ -35,6 +33,20 @@ type AppError = {
   code: string;
   message: string;
   requestId?: string | null;
+};
+
+type Suggestion = {
+  workflowExternalId: string;
+  workflowLabel: string;
+  taskType: string;
+  confidence: number;
+  modelVersion: string;
+  requiresReview: boolean;
+  alternatives?: Array<{
+    workflowExternalId: string;
+    taskType: string;
+    confidence: number;
+  }>;
 };
 
 function formatCost(costMicros: number): string {
@@ -77,10 +89,15 @@ export function CompanyWorkspace() {
   const [model, setModel] = useState("");
   const [taskType, setTaskType] = useState("client_update");
   const [prompt, setPrompt] = useState("");
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [manualOverride, setManualOverride] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [classifierUnavailable, setClassifierUnavailable] = useState(false);
   const [result, setResult] = useState<SlateRunResult | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
+  const sourceAppRequestIdRef = useRef(`northwind-${crypto.randomUUID()}`);
 
   const projects = useMemo(
     () => context?.projects.filter((entry) => entry.clientExternalId === client) ?? [],
@@ -131,12 +148,69 @@ export function CompanyWorkspace() {
     );
   }
 
+  async function analyzeTask() {
+    if (!prompt.trim() || analyzing) return;
+    setAnalyzing(true);
+    setError(null);
+    setClassifierUnavailable(false);
+
+    try {
+      const response = await fetch("/api/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: prompt,
+          allowedWorkflows: context?.workflows ?? [],
+        }),
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        setSuggestion(null);
+        setManualOverride(true);
+        setClassifierUnavailable(true);
+        setError({
+          code: body.error?.code ?? "ATTRIBUTION_UNAVAILABLE",
+          message:
+            body.error?.message ??
+            "Attribution suggestions are unavailable. Choose workflow and task type manually.",
+        });
+        return;
+      }
+
+      const next = body as Suggestion;
+      setSuggestion(next);
+      setWorkflow(next.workflowExternalId);
+      setTaskType(next.taskType);
+      setManualOverride(false);
+      setError(null);
+    } catch {
+      setSuggestion(null);
+      setManualOverride(true);
+      setClassifierUnavailable(true);
+      setError({
+        code: "ATTRIBUTION_UNAVAILABLE",
+        message:
+          "Attribution suggestions are unavailable. Choose workflow and task type manually.",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function submit() {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     setResult(null);
+
+    const wasOverridden = Boolean(
+      suggestion &&
+        (suggestion.workflowExternalId !== workflow ||
+          suggestion.taskType !== taskType ||
+          manualOverride),
+    );
 
     try {
       const response = await fetch("/api/run", {
@@ -148,9 +222,19 @@ export function CompanyWorkspace() {
           projectExternalId: project || null,
           workflowExternalId: workflow || null,
           taskType,
-          sourceAppRequestId: `northwind-${crypto.randomUUID()}`,
+          sourceAppRequestId: sourceAppRequestIdRef.current,
           model,
           input: prompt,
+          attributionPrediction: suggestion
+            ? {
+                predictedWorkflowExternalId: suggestion.workflowExternalId,
+                predictedTaskType: suggestion.taskType,
+                confidence: suggestion.confidence,
+                modelVersion: suggestion.modelVersion,
+                wasOverridden,
+                requiredReview: suggestion.requiresReview,
+              }
+            : null,
         }),
       });
       const body = await response.json();
@@ -161,6 +245,7 @@ export function CompanyWorkspace() {
       }
 
       setResult(body as SlateRunResult);
+      sourceAppRequestIdRef.current = `northwind-${crypto.randomUUID()}`;
     } catch {
       setError({
         code: "MOCK_APP_UNAVAILABLE",
@@ -172,9 +257,11 @@ export function CompanyWorkspace() {
     }
   }
 
+  const showManualSelectors = manualOverride || classifierUnavailable || !suggestion;
   const canSubmit =
     !contextLoading &&
     !submitting &&
+    !analyzing &&
     Boolean(employee && client && project && workflow && model && prompt.trim());
 
   return (
@@ -198,16 +285,16 @@ export function CompanyWorkspace() {
           <p className="eyebrow">Customer application / separate runtime</p>
           <h1>Turn a rough thought into client-ready work.</h1>
           <p className="hero-copy">
-            This is Northwind&apos;s employee tool. It sends business context and the task
-            to Slate over HTTP; Slate handles model routing, attribution, and cost.
+            Enter the task, let the attribution service suggest workflow and task type,
+            then generate through Slate.
           </p>
         </div>
         <div className="flow-card" aria-label="Integration flow">
           <span>Northwind</span>
+          <b>classify</b>
+          <span>Attribution</span>
           <b>HTTPS</b>
-          <span>Slate gateway</span>
-          <b>metered</b>
-          <span>Model</span>
+          <span>Slate</span>
         </div>
       </section>
 
@@ -257,23 +344,6 @@ export function CompanyWorkspace() {
               }))}
             />
             <SelectField
-              label="Workflow"
-              value={workflow}
-              onChange={setWorkflow}
-              options={
-                context?.workflows.map((entry) => ({
-                  value: entry.externalId,
-                  label: entry.name,
-                })) ?? []
-              }
-            />
-            <SelectField
-              label="Task type"
-              value={taskType}
-              onChange={setTaskType}
-              options={TASK_TYPES.map(([value, label]) => ({ value, label }))}
-            />
-            <SelectField
               label="Model"
               value={model}
               onChange={setModel}
@@ -290,7 +360,10 @@ export function CompanyWorkspace() {
             <span>Instructions</span>
             <textarea
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                setSuggestion(null);
+              }}
               rows={7}
               placeholder="Describe the result you need, the audience, and any important constraints…"
               maxLength={16000}
@@ -304,14 +377,85 @@ export function CompanyWorkspace() {
                 key={example.label}
                 type="button"
                 onClick={() => {
-                  setTaskType(example.taskType);
                   setPrompt(example.prompt);
+                  setSuggestion(null);
                 }}
               >
                 {example.label}
               </button>
             ))}
           </div>
+
+          <div className="examples">
+            <button
+              type="button"
+              onClick={() => void analyzeTask()}
+              disabled={!prompt.trim() || analyzing || contextLoading}
+            >
+              {analyzing ? "Analyzing…" : "Analyze task"}
+            </button>
+          </div>
+
+          {suggestion ? (
+            <div className="result-card" style={{ marginTop: "1rem" }}>
+              <p className="eyebrow">Suggested by AI</p>
+              <h3>
+                {suggestion.workflowLabel} ·{" "}
+                {TASK_TYPES.find(([value]) => value === suggestion.taskType)?.[1] ??
+                  suggestion.taskType}
+              </h3>
+              <p>
+                Confidence {(suggestion.confidence * 100).toFixed(0)}% · model{" "}
+                {suggestion.modelVersion}
+              </p>
+              {suggestion.requiresReview ? (
+                <p role="status">AI is not confident. Please review the suggested assignment.</p>
+              ) : null}
+              <div className="examples">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkflow(suggestion.workflowExternalId);
+                    setTaskType(suggestion.taskType);
+                    setManualOverride(false);
+                  }}
+                >
+                  Use suggestion
+                </button>
+                <button type="button" onClick={() => setManualOverride(true)}>
+                  Change
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {showManualSelectors ? (
+            <div className="fields-grid" style={{ marginTop: "1rem" }}>
+              <SelectField
+                label="Workflow"
+                value={workflow}
+                onChange={(value) => {
+                  setWorkflow(value);
+                  setManualOverride(true);
+                }}
+                options={
+                  context?.workflows.map((entry) => ({
+                    value: entry.externalId,
+                    label: entry.name,
+                  })) ?? []
+                }
+              />
+              <SelectField
+                label="Task type"
+                value={taskType}
+                onChange={(value) => {
+                  setTaskType(value);
+                  setManualOverride(true);
+                }}
+                options={TASK_TYPES.map(([value, label]) => ({ value, label }))}
+              />
+            </div>
+          ) : null}
 
           <button className="submit-button" type="button" disabled={!canSubmit} onClick={submit}>
             {submitting ? "Routing securely through Slate…" : "Generate with AI"}
@@ -326,7 +470,9 @@ export function CompanyWorkspace() {
               <h3>{error.code.replaceAll("_", " ")}</h3>
               <p>{error.message}</p>
               {error.requestId ? <code>{error.requestId}</code> : null}
-              <button type="button" onClick={loadContext}>Retry connection</button>
+              <button type="button" onClick={loadContext}>
+                Retry connection
+              </button>
             </div>
           ) : result ? (
             <div className="result-card">
@@ -339,10 +485,22 @@ export function CompanyWorkspace() {
               </div>
               <div className="response-copy">{result.response}</div>
               <div className="metrics">
-                <div><span>Model</span><strong>{result.usage.model}</strong></div>
-                <div><span>Tokens</span><strong>{result.usage.totalTokens.toLocaleString()}</strong></div>
-                <div><span>AI cost</span><strong>{formatCost(result.usage.costMicros)}</strong></div>
-                <div><span>Latency</span><strong>{result.usage.latencyMs} ms</strong></div>
+                <div>
+                  <span>Model</span>
+                  <strong>{result.usage.model}</strong>
+                </div>
+                <div>
+                  <span>Tokens</span>
+                  <strong>{result.usage.totalTokens.toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>AI cost</span>
+                  <strong>{formatCost(result.usage.costMicros)}</strong>
+                </div>
+                <div>
+                  <span>Latency</span>
+                  <strong>{result.usage.latencyMs} ms</strong>
+                </div>
               </div>
               <div className="request-id">
                 <span>Slate request</span>
@@ -351,12 +509,14 @@ export function CompanyWorkspace() {
             </div>
           ) : (
             <div className="empty-result">
-              <div className="orb"><span /></div>
+              <div className="orb">
+                <span />
+              </div>
               <p className="eyebrow">Response preview</p>
               <h3>Your finished work will appear here.</h3>
               <p>
-                Submit one small task to verify the complete Northwind → Slate → model
-                workflow.
+                Analyze the task, accept or override the suggestion, then generate through
+                Slate.
               </p>
             </div>
           )}
@@ -365,7 +525,7 @@ export function CompanyWorkspace() {
             <strong>Clean application boundary</strong>
             <p>
               This app has no database or LiteLLM access and imports no Slate internals.
-              Its credential is used only by the server.
+              Classifier and Slate credentials stay on the server.
             </p>
           </div>
         </aside>

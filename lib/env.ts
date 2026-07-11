@@ -40,6 +40,12 @@ export const envSchema = z.object({
   SLATE_ADMIN_EMAIL: z.string().trim().email().optional(),
   SLATE_ADMIN_PASSWORD: z.string().min(12).optional(),
   SLATE_ADMIN_ORGANIZATION_SLUG: z.string().trim().min(1).optional(),
+  SEED_ADMIN_USERNAME: z.string().trim().min(1).optional(),
+  SEED_ADMIN_PASSWORD: z.string().min(1).optional(),
+  ATTRIBUTION_SERVICE_URL: z.string().url().optional(),
+  ATTRIBUTION_SERVICE_TOKEN: z.string().trim().min(1).optional(),
+  ATTRIBUTION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).optional(),
+  ATTRIBUTION_RETRAIN_MIN_EXAMPLES: z.coerce.number().int().positive().optional(),
   // Integration credentials are optional at boot so the app can start
   // without Slack/LiteLLM configured. Routes and jobs that actually need an
   // integration must call assertLiteLLMConfigured()/assertSlackConfigured()

@@ -118,6 +118,46 @@ async function findMembership(input: {
   };
 }
 
+export async function findMembershipByUserId(input: {
+  userId: string;
+  organizationSlug?: string | null | undefined;
+}): Promise<Omit<DashboardSession, "expiresAt"> | null> {
+  const user = await db.appUser.findUnique({
+    where: { id: input.userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      memberships: {
+        ...(input.organizationSlug
+          ? { where: { organization: { slug: input.organizationSlug } } }
+          : {}),
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: {
+          role: true,
+          organization: {
+            select: { id: true, name: true, slug: true },
+          },
+        },
+      },
+    },
+  });
+
+  const membership = user?.memberships[0];
+  if (!user || !membership) return null;
+
+  return {
+    userId: user.id,
+    userEmail: user.email,
+    userName: user.name,
+    organizationId: membership.organization.id,
+    organizationName: membership.organization.name,
+    organizationSlug: membership.organization.slug,
+    role: membership.role,
+  };
+}
+
 export async function authenticateDashboardCredentials(input: {
   email: string;
   password: string;
@@ -228,7 +268,7 @@ export async function getDashboardSession(): Promise<DashboardSession | null> {
 
 export async function requireDashboardSession(): Promise<DashboardSession> {
   const session = await getDashboardSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect("/login" as import("next").Route);
   return session;
 }
 

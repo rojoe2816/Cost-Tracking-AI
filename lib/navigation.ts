@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   KeyRound,
   ServerCog,
+  Sparkles,
 } from "lucide-react";
 
 export interface DashboardNavItem {
@@ -60,6 +61,12 @@ export const dashboardNavigation: DashboardNavItem[] = [
     label: "Model Access",
     description: "Provider and model policy",
     icon: ServerCog,
+  },
+  {
+    href: "/settings/attribution" as Route,
+    label: "Attribution",
+    description: "Classifier quality and overrides",
+    icon: Sparkles,
   },
   {
     href: "/settings/privacy",

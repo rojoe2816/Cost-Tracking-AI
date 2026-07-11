@@ -13,6 +13,9 @@ const mockDb = vi.hoisted(() => ({
   aiRequestAudit: {
     findFirst: vi.fn(),
   },
+  workflowType: {
+    findFirst: vi.fn(),
+  },
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -50,6 +53,10 @@ vi.mock("@/lib/logger", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/attribution/decisions", () => ({
+  createAiAttributionDecision: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { processInternalAiGatewayRequest } from "./gateway";
@@ -144,6 +151,7 @@ describe("processInternalAiGatewayRequest", () => {
       value: ATTRIBUTION_VALUE,
     });
     mockDb.aiRequestAudit.findFirst.mockResolvedValue(null);
+    mockDb.workflowType.findFirst.mockResolvedValue(null);
     mockCreateProcessingAiRequestAudit.mockResolvedValue({ id: AUDIT_ID });
     mockSendLiteLlmChatCompletion.mockResolvedValue({
       content: "raw completion",

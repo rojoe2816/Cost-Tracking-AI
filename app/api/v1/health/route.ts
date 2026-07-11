@@ -1,35 +1,28 @@
-import { db } from "@/lib/db";
-import { getLiteLLMRuntimeConfig } from "@/lib/litellm/client";
+import { getPublicHealthSnapshot } from "@/lib/public-api/health";
 import { getPublicRequestId, publicJson } from "@/lib/public-api/http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-async function databaseHealthy(): Promise<boolean> {
-  try {
-    await db.$queryRaw`SELECT 1`;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function GET(request: Request) {
   const requestId = getPublicRequestId(request);
-  const database = await databaseHealthy();
-  const litellm = getLiteLLMRuntimeConfig().status;
-  const healthy = database && litellm !== "missing";
+  const snapshot = await getPublicHealthSnapshot();
 
   return publicJson(
     {
       requestId,
-      ok: healthy,
+      status: snapshot.status,
+      ok: snapshot.ok,
       version: "v1",
+      database: snapshot.database,
+      modelGateway: snapshot.modelGateway,
+      worker: snapshot.worker,
       services: {
-        database: database ? "healthy" : "unavailable",
-        modelGateway: litellm,
+        database: snapshot.database,
+        modelGateway: snapshot.modelGateway,
+        worker: snapshot.worker,
       },
     },
-    { status: healthy ? 200 : 503, requestId },
+    { status: snapshot.ok ? 200 : 503, requestId },
   );
 }
