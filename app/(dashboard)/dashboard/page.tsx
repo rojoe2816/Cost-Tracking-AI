@@ -27,9 +27,9 @@ import {
   getSpendByWorkflow,
   truncateLiteLlmRequestId,
 } from "@/lib/analytics/usage";
+import { requireDashboardSession } from "@/lib/auth/session";
 import { formatEnumLabel } from "@/lib/demo-agency";
 import { formatSmallUsd } from "@/lib/db/costs";
-import { getDemoOrganization } from "@/lib/slack/mappings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -39,23 +39,11 @@ function formatTokenCount(value: number) {
 }
 
 export default async function DashboardOverviewPage() {
-  const organization = await getDemoOrganization();
-
-  if (!organization) {
-    return (
-      <div className="space-y-8">
-        <PageHeader
-          eyebrow="Dashboard"
-          title="AI usage overview"
-          description="Track attributed AI spend from completed usage events."
-        />
-        <div className="rounded-2xl bg-secondary/70 p-4 text-sm text-muted-foreground">
-          Demo Agency organization not found. Run `npm run db:seed` to create local
-          development data.
-        </div>
-      </div>
-    );
-  }
+  const session = await requireDashboardSession();
+  const organization = {
+    id: session.organizationId,
+    name: session.organizationName,
+  };
 
   const dateRange = getDefaultUsageDateRange();
   const [summary, spendByClient, spendByWorkflow, spendBySource, recentRequests] =

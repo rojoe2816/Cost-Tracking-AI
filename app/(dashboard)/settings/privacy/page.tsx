@@ -3,17 +3,26 @@ import { ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { demoAgency, formatEnumLabel } from "@/lib/demo-agency";
+import { requireDashboardSession } from "@/lib/auth/session";
+import { formatEnumLabel } from "@/lib/demo-agency";
+import { db } from "@/lib/db";
 
-export default function PrivacySettingsPage() {
-  const promptStorageMode = demoAgency.privacy.promptStorageMode;
+export const dynamic = "force-dynamic";
+
+export default async function PrivacySettingsPage() {
+  const session = await requireDashboardSession();
+  const settings = await db.organizationPrivacySettings.findUnique({
+    where: { organizationId: session.organizationId },
+    select: { promptStorageMode: true },
+  });
+  const promptStorageMode = settings?.promptStorageMode ?? "METADATA_ONLY";
 
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Settings"
         title="Prompt privacy"
-        description="Privacy defaults are surfaced in the shell before auth and administrative settings are implemented."
+        description="Review the prompt-storage policy enforced for this authenticated organization."
       />
 
       <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
@@ -30,7 +39,7 @@ export default function PrivacySettingsPage() {
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               <span className="font-medium text-foreground">Metadata-only is the default.</span>{" "}
-              Demo Agency stores request metadata and audit state without storing
+              {session.organizationName} stores request metadata and audit state without storing
               raw prompt or response text by default.
             </p>
           </CardContent>
@@ -65,8 +74,7 @@ export default function PrivacySettingsPage() {
                   {formatEnumLabel(promptStorageMode)}
                 </Badge>{" "}
                 <span>
-                  and more permissive modes can be added later behind org-level
-                  controls.
+                  and any policy change remains organization-scoped.
                 </span>
               </div>
             </div>

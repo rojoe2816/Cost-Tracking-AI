@@ -49,35 +49,41 @@ enum BackgroundJobStatus {
 }
 
 model Organization {
-  id                   String                       @id @default(cuid())
-  name                 String
-  slug                 String                       @unique
-  createdAt            DateTime                     @default(now())
-  updatedAt            DateTime                     @updatedAt
-  memberships          Membership[]
-  clients              Client[]
-  projects             Project[]
-  workflowTypes        WorkflowType[]
-  slackWorkspaces      SlackWorkspace[]
-  slackChannelMappings SlackChannelMapping[]
-  clientRevenues       ClientRevenue[]
-  privacySettings      OrganizationPrivacySettings?
-  aiRequestAudits      AiRequestAudit[]
-  aiUsageEvents        AiUsageEvent[]
-  employees            Employee[]
-  aiSourceApps         AiSourceApp[]
+  id                          String                       @id @default(cuid())
+  name                        String
+  slug                        String                       @unique
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  memberships                 Membership[]
+  clients                     Client[]
+  projects                    Project[]
+  workflowTypes               WorkflowType[]
+  slackWorkspaces             SlackWorkspace[]
+  slackChannelMappings        SlackChannelMapping[]
+  clientRevenues              ClientRevenue[]
+  privacySettings             OrganizationPrivacySettings?
+  aiRequestAudits             AiRequestAudit[]
+  aiUsageEvents               AiUsageEvent[]
+  employees                   Employee[]
+  aiSourceApps                AiSourceApp[]
+  modelProviderConnections    ModelProviderConnection[]
+  backgroundJobs              BackgroundJob[]
+  aiAttributionDecisions      AiAttributionDecision[]
+  attributionTrainingExamples AttributionTrainingExample[]
+  attributionModelVersions    AttributionModelVersion[]
 
   @@index([createdAt])
 }
 
 model AppUser {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  name            String
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  memberships     Membership[]
-  aiRequestAudits AiRequestAudit[]
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  name               String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  memberships        Membership[]
+  aiRequestAudits    AiRequestAudit[]
+  passwordCredential PasswordCredential?
 
   @@index([createdAt])
 }
@@ -101,6 +107,7 @@ model Membership {
 model Client {
   id                   String                @id @default(cuid())
   organizationId       String
+  externalId           String?
   name                 String
   externalAccountingId String?
   status               ClientStatus          @default(ACTIVE)
@@ -114,6 +121,7 @@ model Client {
   aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, name])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
   @@index([createdAt])
@@ -123,6 +131,7 @@ model Project {
   id                   String                @id @default(cuid())
   organizationId       String
   clientId             String
+  externalId           String?
   name                 String
   status               ProjectStatus         @default(ACTIVE)
   createdAt            DateTime              @default(now())
@@ -135,6 +144,7 @@ model Project {
   aiUsageEvents        AiUsageEvent[]
 
   @@unique([organizationId, clientId, name])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([clientId])
   @@index([status])
@@ -142,18 +152,23 @@ model Project {
 }
 
 model WorkflowType {
-  id                   String                @id @default(cuid())
+  id                   String                       @id @default(cuid())
   organizationId       String
+  externalId           String?
   name                 String
   slug                 String
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   slackChannelMappings SlackChannelMapping[]
   aiRequestAudits      AiRequestAudit[]
   aiUsageEvents        AiUsageEvent[]
+  predictedDecisions   AiAttributionDecision[]      @relation("PredictedWorkflow")
+  finalDecisions       AiAttributionDecision[]      @relation("FinalWorkflow")
+  trainingExamples     AttributionTrainingExample[]
 
   @@unique([organizationId, slug])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([createdAt])
 }
@@ -166,7 +181,7 @@ model SlackWorkspace {
   botUserId         String?
   encryptedBotToken String?
   connectedAt       DateTime?
-  disconnectedAt  DateTime?
+  disconnectedAt    DateTime?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
   organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -223,40 +238,62 @@ model ClientRevenue {
 }
 
 model Employee {
-  id              String           @id @default(cuid())
-  organizationId  String
-  name            String
-  email           String?
-  department      String?
-  role            String?
-  externalId      String?
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  aiRequestAudits AiRequestAudit[]
-  aiUsageEvents   AiUsageEvent[]
+  id                   String                  @id @default(cuid())
+  organizationId       String
+  name                 String
+  email                String?
+  department           String?
+  role                 String?
+  externalId           String?
+  isActive             Boolean                 @default(true)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
+  attributionDecisions AiAttributionDecision[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, externalId])
+  @@index([organizationId])
+  @@index([organizationId, email])
+  @@index([createdAt])
+}
+
+model ModelProviderConnection {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  name                String
+  providerType        String
+  endpointUrl         String?
+  encryptedCredential String?
+  allowedModels       Json
+  isActive            Boolean      @default(true)
+  lastValidatedAt     DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, name])
   @@index([organizationId])
-  @@index([organizationId, email])
-  @@index([organizationId, externalId])
+  @@index([organizationId, isActive])
   @@index([createdAt])
 }
 
 model AiSourceApp {
-  id              String                  @id @default(cuid())
-  organizationId  String
-  name            String
-  type            String
-  description     String?
-  isActive        Boolean                 @default(true)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  aiRequestAudits AiRequestAudit[]
-  aiUsageEvents   AiUsageEvent[]
-  credentials     AiSourceAppCredential[]
+  id                   String                  @id @default(cuid())
+  organizationId       String
+  name                 String
+  type                 String
+  description          String?
+  isActive             Boolean                 @default(true)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudits      AiRequestAudit[]
+  aiUsageEvents        AiUsageEvent[]
+  credentials          AiSourceAppCredential[]
+  attributionDecisions AiAttributionDecision[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -288,18 +325,104 @@ model AiSourceAppCredential {
 }
 
 model OrganizationPrivacySettings {
-  id                String            @id @default(cuid())
-  organizationId    String            @unique
-  promptStorageMode PromptStorageMode @default(METADATA_ONLY)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                                  String            @id @default(cuid())
+  organizationId                      String            @unique
+  promptStorageMode                   PromptStorageMode @default(METADATA_ONLY)
+  allowAttributionTrainingTextStorage Boolean           @default(false)
+  createdAt                           DateTime          @default(now())
+  updatedAt                           DateTime          @updatedAt
+  organization                        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
 }
 
+model PasswordCredential {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  username           String    @unique
+  passwordHash       String
+  failedAttemptCount Int       @default(0)
+  lockedUntil        DateTime?
+  passwordChangedAt  DateTime  @default(now())
+  mustChangePassword Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([username])
+  @@index([createdAt])
+}
+
+/// Metadata-only record of classifier prediction vs final attribution.
+/// Never stores prompt or response text.
+model AiAttributionDecision {
+  id                      String          @id @default(cuid())
+  organizationId          String
+  aiRequestAuditId        String?         @unique
+  sourceAppId             String
+  employeeId              String?
+  predictedWorkflowTypeId String?
+  predictedTaskType       String?
+  predictedConfidence     Float?
+  modelVersion            String?
+  finalWorkflowTypeId     String
+  finalTaskType           String
+  wasOverridden           Boolean         @default(false)
+  requiredReview          Boolean         @default(false)
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  organization            Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  aiRequestAudit          AiRequestAudit? @relation(fields: [aiRequestAuditId], references: [id], onDelete: SetNull)
+  sourceApp               AiSourceApp     @relation(fields: [sourceAppId], references: [id], onDelete: Cascade)
+  employee                Employee?       @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  predictedWorkflowType   WorkflowType?   @relation("PredictedWorkflow", fields: [predictedWorkflowTypeId], references: [id], onDelete: SetNull)
+  finalWorkflowType       WorkflowType    @relation("FinalWorkflow", fields: [finalWorkflowTypeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, wasOverridden])
+  @@index([organizationId, modelVersion])
+  @@index([sourceAppId])
+}
+
+model AttributionTrainingExample {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  encryptedText       String
+  finalWorkflowTypeId String
+  finalTaskType       String
+  approved            Boolean      @default(false)
+  source              String       @default("user_consent")
+  consentCapturedAt   DateTime
+  deletedAt           DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  finalWorkflowType   WorkflowType @relation(fields: [finalWorkflowTypeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, approved, deletedAt])
+  @@index([organizationId, createdAt])
+}
+
+model AttributionModelVersion {
+  id             String        @id @default(cuid())
+  organizationId String?
+  version        String
+  checksum       String
+  macroF1        Float?
+  top2Accuracy   Float?
+  isActive       Boolean       @default(false)
+  evaluationJson Json?
+  trainedAt      DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, version])
+  @@index([organizationId, isActive])
+  @@index([createdAt])
+}
+
 model AiRequestAudit {
-  id                       String          @id @default(cuid())
+  id                       String                 @id @default(cuid())
   organizationId           String
   userId                   String?
   source                   AiRequestSource
@@ -317,19 +440,21 @@ model AiRequestAudit {
   sourceAppId              String?
   taskType                 String?
   sourceAppRequestId       String?
-  promptStored             Boolean         @default(false)
+  promptStored             Boolean                @default(false)
   errorMessage             String?
-  createdAt                DateTime        @default(now())
-  updatedAt                DateTime        @updatedAt
-  organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user                     AppUser?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  client                   Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  project                  Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  workflowType             WorkflowType?   @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
-  employee                 Employee?       @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  sourceApp                AiSourceApp?    @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  organization             Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                     AppUser?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  client                   Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project                  Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workflowType             WorkflowType?          @relation(fields: [workflowTypeId], references: [id], onDelete: SetNull)
+  employee                 Employee?              @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  sourceApp                AiSourceApp?           @relation(fields: [sourceAppId], references: [id], onDelete: SetNull)
   usageEvents              AiUsageEvent[]
+  attributionDecision      AiAttributionDecision?
 
+  @@unique([sourceAppId, sourceAppRequestId])
   @@index([organizationId])
   @@index([userId])
   @@index([clientId])
@@ -404,6 +529,7 @@ model AiUsageEvent {
 /// Payloads must contain metadata only — never prompt or response text.
 model BackgroundJob {
   id             String              @id @default(cuid())
+  organizationId String?
   type           String
   status         BackgroundJobStatus @default(QUEUED)
   payloadJson    Json
@@ -416,7 +542,9 @@ model BackgroundJob {
   idempotencyKey String?             @unique
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  organization   Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId, createdAt])
   @@index([status, runAfter])
   @@index([type])
   @@index([createdAt])

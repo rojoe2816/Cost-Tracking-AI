@@ -7,10 +7,14 @@ const mockCreateProcessingAiRequestAudit = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestCompleted = vi.hoisted(() => vi.fn());
 const mockMarkAiRequestFailed = vi.hoisted(() => vi.fn());
 const mockCreateAiUsageEvent = vi.hoisted(() => vi.fn());
+const mockCreateConsentedTrainingExample = vi.hoisted(() => vi.fn());
 const mockSendLiteLlmChatCompletion = vi.hoisted(() => vi.fn());
 const mockResolveLiteLlmCompletionForPersistence = vi.hoisted(() => vi.fn());
 const mockDb = vi.hoisted(() => ({
   aiRequestAudit: {
+    findFirst: vi.fn(),
+  },
+  workflowType: {
     findFirst: vi.fn(),
   },
 }));
@@ -52,6 +56,13 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+vi.mock("@/lib/attribution/decisions", () => ({
+  createAiAttributionDecision: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/attribution/training", () => ({
+  createConsentedTrainingExample: mockCreateConsentedTrainingExample,
+}));
+
 import { processInternalAiGatewayRequest } from "./gateway";
 import {
   validateInternalAiGatewayBody,
@@ -83,6 +94,7 @@ const AUTH_VALUE = {
   credentialId: "cred_1",
   sourceAppName: "Mock Company AI Portal",
   sourceAppType: "mock_company_portal",
+  scopes: ["ai:run" as const],
 };
 
 const ATTRIBUTION_VALUE = {
@@ -143,6 +155,7 @@ describe("processInternalAiGatewayRequest", () => {
       value: ATTRIBUTION_VALUE,
     });
     mockDb.aiRequestAudit.findFirst.mockResolvedValue(null);
+    mockDb.workflowType.findFirst.mockResolvedValue(null);
     mockCreateProcessingAiRequestAudit.mockResolvedValue({ id: AUDIT_ID });
     mockSendLiteLlmChatCompletion.mockResolvedValue({
       content: "raw completion",
@@ -156,6 +169,7 @@ describe("processInternalAiGatewayRequest", () => {
     mockMarkAiRequestCompleted.mockResolvedValue(undefined);
     mockMarkAiRequestFailed.mockResolvedValue(undefined);
     mockCreateAiUsageEvent.mockResolvedValue(undefined);
+    mockCreateConsentedTrainingExample.mockResolvedValue({ created: true });
   });
 
   it("rejects missing bearer token with 401", async () => {
@@ -287,6 +301,22 @@ describe("processInternalAiGatewayRequest", () => {
     expect(mockSendLiteLlmChatCompletion).not.toHaveBeenCalled();
   });
 
+  it("maps a concurrent idempotency race to 409 before the model call", async () => {
+    mockCreateProcessingAiRequestAudit.mockRejectedValue({ code: "P2002" });
+
+    const result = await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: VALID_BODY,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      value: { error: { code: "DUPLICATE_SOURCE_APP_REQUEST" } },
+    });
+    expect(mockSendLiteLlmChatCompletion).not.toHaveBeenCalled();
+  });
+
   it("processes valid request and returns output with usage metadata", async () => {
     const result = await processInternalAiGatewayRequest({
       authorizationHeader: `Bearer ${RAW_KEY}`,
@@ -386,6 +416,29 @@ describe("processInternalAiGatewayRequest", () => {
       AUDIT_ID,
       "litellm-req-gateway-1",
     );
+  });
+
+  it("stores encrypted training text only with explicit consent", async () => {
+    await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: { ...VALID_BODY, consentToAttributionTraining: true },
+    });
+
+    expect(mockCreateConsentedTrainingExample).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      text: VALID_BODY.input,
+      finalWorkflowTypeId: WORKFLOW_ID,
+      finalTaskType: "client_update",
+    });
+  });
+
+  it("does not store training text by default", async () => {
+    await processInternalAiGatewayRequest({
+      authorizationHeader: `Bearer ${RAW_KEY}`,
+      body: VALID_BODY,
+    });
+
+    expect(mockCreateConsentedTrainingExample).not.toHaveBeenCalled();
   });
 
   it("marks audit failed and skips usage event when LiteLLM fails", async () => {

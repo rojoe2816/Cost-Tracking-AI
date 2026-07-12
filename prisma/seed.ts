@@ -44,6 +44,44 @@ async function main() {
     },
   });
 
+  const seedUsername = process.env.SEED_ADMIN_USERNAME?.trim().toLowerCase();
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (seedUsername && seedPassword) {
+    if (
+      process.env.NODE_ENV === "production" &&
+      (seedPassword.length < 8 ||
+        ["2816", "password", "password123"].includes(seedPassword.toLowerCase()))
+    ) {
+      throw new Error("Weak SEED_ADMIN_PASSWORD is not allowed in production.");
+    }
+
+    const { hash } = await import("@node-rs/argon2");
+    const passwordHash = await hash(seedPassword, {
+      memoryCost: 19456,
+      timeCost: 2,
+      parallelism: 1,
+      outputLen: 32,
+    });
+
+    await prisma.passwordCredential.upsert({
+      where: { userId: owner.id },
+      update: {
+        username: seedUsername,
+        passwordHash,
+        mustChangePassword: true,
+        failedAttemptCount: 0,
+        lockedUntil: null,
+        passwordChangedAt: new Date(),
+      },
+      create: {
+        userId: owner.id,
+        username: seedUsername,
+        passwordHash,
+        mustChangePassword: true,
+      },
+    });
+  }
+
   for (const client of demoAgency.clients) {
     const persistedClient = await prisma.client.upsert({
       where: {
@@ -53,11 +91,13 @@ async function main() {
         },
       },
       update: {
+        externalId: client.externalId,
         externalAccountingId: client.externalAccountingId,
         status: client.status,
       },
       create: {
         organizationId: organization.id,
+        externalId: client.externalId,
         name: client.name,
         externalAccountingId: client.externalAccountingId,
         status: client.status,
@@ -74,11 +114,13 @@ async function main() {
           },
         },
         update: {
+          externalId: project.externalId,
           status: project.status,
         },
         create: {
           organizationId: organization.id,
           clientId: persistedClient.id,
+          externalId: project.externalId,
           name: project.name,
           status: project.status,
         },
@@ -87,21 +129,23 @@ async function main() {
   }
 
   await Promise.all(
-    demoAgency.workflowTypes.map((name) =>
+    demoAgency.workflowTypes.map((workflow) =>
       prisma.workflowType.upsert({
         where: {
           organizationId_slug: {
             organizationId: organization.id,
-            slug: slugify(name),
+            slug: slugify(workflow.name),
           },
         },
         update: {
-          name,
+          name: workflow.name,
+          externalId: workflow.externalId,
         },
         create: {
           organizationId: organization.id,
-          name,
-          slug: slugify(name),
+          name: workflow.name,
+          slug: slugify(workflow.name),
+          externalId: workflow.externalId,
         },
       }),
     ),
@@ -171,6 +215,29 @@ async function main() {
     create: {
       organizationId: organization.id,
       promptStorageMode: demoAgency.privacy.promptStorageMode,
+    },
+  });
+
+  await prisma.modelProviderConnection.upsert({
+    where: {
+      organizationId_name: {
+        organizationId: organization.id,
+        name: "Slate-managed LiteLLM",
+      },
+    },
+    update: {
+      providerType: "litellm",
+      endpointUrl: process.env.LITELLM_PROXY_URL ?? "http://localhost:4000",
+      allowedModels: ["gpt-4o-mini", "gpt-4o"],
+      isActive: true,
+    },
+    create: {
+      organizationId: organization.id,
+      name: "Slate-managed LiteLLM",
+      providerType: "litellm",
+      endpointUrl: process.env.LITELLM_PROXY_URL ?? "http://localhost:4000",
+      allowedModels: ["gpt-4o-mini", "gpt-4o"],
+      isActive: true,
     },
   });
 

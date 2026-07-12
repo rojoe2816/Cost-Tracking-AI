@@ -1,9 +1,7 @@
 import { PageHeader } from "@/components/dashboard/page-header";
 import { SlackMappingManager } from "@/components/slack/slack-mapping-manager";
-import {
-  getDemoOrganization,
-  getSlackMappingPageData,
-} from "@/lib/slack/mappings";
+import { requireDashboardSession } from "@/lib/auth/session";
+import { getSlackMappingPageData } from "@/lib/slack/mappings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,26 +10,9 @@ export default async function SlackPage({
 }: {
   searchParams: Promise<{ notice?: string; error?: string }>;
 }) {
-  const organization = await getDemoOrganization();
+  const session = await requireDashboardSession();
   const params = await searchParams;
-
-  if (!organization) {
-    return (
-      <div className="space-y-8">
-        <PageHeader
-          eyebrow="Slack"
-          title="Slack channel attribution"
-          description="Manage manual Slack channel mappings for Demo Agency."
-        />
-        <div className="rounded-2xl bg-secondary/70 p-4 text-sm text-muted-foreground">
-          Demo Agency organization not found. Run `npm run db:seed` to create local
-          development data.
-        </div>
-      </div>
-    );
-  }
-
-  const data = await getSlackMappingPageData(organization.id);
+  const data = await getSlackMappingPageData(session.organizationId);
 
   return (
     <div className="space-y-8">

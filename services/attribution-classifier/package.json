@@ -1,0 +1,12 @@
+{
+  "name": "attribution-classifier",
+  "version": "0.1.0",
+  "description": "Attribution classifier microservice (Python/FastAPI)",
+  "scripts": {
+    "train": ".venv/bin/python -m app.training",
+    "evaluate": ".venv/bin/python -m app.evaluate",
+    "test": ".venv/bin/pytest -q",
+    "start": ".venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8100 --reload"
+  },
+  "private": true
+}

@@ -1,8 +1,9 @@
 # Slate
 
-Production-quality MVP scaffold for Slate, an AI job-costing SaaS built for
-agencies. The app is designed to track AI usage by agency, client, project,
-user, workflow, and Slack channel.
+Production-quality MVP for Slate, an AI integration gateway and job-costing
+platform for agencies and other service businesses. Slate is separate from the
+customer's employee-facing AI application: it authenticates source apps, routes
+model requests, captures cost and tokens, and attributes usage to business work.
 
 ## Product direction
 
@@ -11,13 +12,14 @@ The Slack integration remains available as an optional connector, but the core
 MVP now focuses on routing internal AI app requests through Slate and LiteLLM so
 usage can be attributed to employees, clients, projects, and workflows.
 
-See [docs/internal-ai-platform-pivot.md](./docs/internal-ai-platform-pivot.md) for
-the full architecture pivot, revised phases, and success criteria. Phase 5A adds
-`Employee` and `AiSourceApp` models plus backend helpers in `lib/internal-ai/`.
-Phase 5B adds hashed source app API credentials for internal AI gateway auth.
-Phase 5C adds `POST /api/ai/gateway` for source-agnostic internal AI tool integration.
-Slack OAuth, channel mapping, and event routes remain documented below as an optional
-connector path — they are not required for the new internal-portal MVP.
+The repository is a small monorepo with two separately runnable applications:
+
+- Slate web/API at `http://localhost:3000`
+- Mock Company AI at `http://localhost:3100`
+
+The mock app has no direct database, LiteLLM, or Slate-internal imports. It uses
+the public HTTPS contract through `@slate-ai/sdk`. See
+[docs/public-api.md](./docs/public-api.md) for the customer integration contract.
 
 ## Stack
 
@@ -46,6 +48,10 @@ lib/
   slack/
 prisma/
 scripts/
+mock-company-ai/       # separate customer application
+packages/
+  slate-contracts/     # public TypeScript contracts
+  slate-sdk/           # customer integration client
 ```
 
 ## Local setup
@@ -109,10 +115,21 @@ npm run db:push
 npm run db:seed
 ```
 
-8. Start the development server and durable worker in separate terminals:
+8. Configure the separate mock app:
+
+```bash
+cp mock-company-ai/.env.example mock-company-ai/.env.local
+# Set SLATE_SOURCE_APP_KEY to a key created in Slate's Source Apps page.
+```
+
+9. Start Slate, the separate mock app, and the durable worker in separate terminals:
 
 ```bash
 npm run dev
+```
+
+```bash
+npm run dev:mock
 ```
 
 ```bash
@@ -235,43 +252,44 @@ npm run gateway:test
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/ai/gateway \
+curl -X POST http://localhost:3000/api/v1/ai/gateway \
   -H "Authorization: Bearer slate_app_sk_..." \
   -H "Content-Type: application/json" \
   -d '{
-    "employeeId": "...",
-    "clientId": "...",
-    "projectId": "...",
-    "workflowTypeId": "...",
+    "employeeExternalId": "emp-104",
+    "clientExternalId": "client-acme",
+    "projectExternalId": "project-seo-001",
+    "workflowExternalId": "client-update",
     "taskType": "client_update",
-    "sourceAppRequestId": "optional-idempotency-key",
+    "sourceAppRequestId": "required-idempotency-key",
     "model": "gpt-4o-mini",
     "input": "User prompt (not stored in Slate DB)"
   }'
 ```
 
-Bearer credentials: create with `npm run source-app:key:create`. Prompt/response text is returned to the caller but **not** persisted. Duplicate `sourceAppRequestId` returns **409 Conflict**.
+Bearer credentials can be created at `/settings/source-apps` or with the CLI.
+Prompt/response text is returned to the caller but **not** persisted. Duplicate
+`sourceAppRequestId` returns **409 Conflict** without a second model call.
 
-## Company AI workspace
+## Separate mock company application
 
-The demo internal AI portal lives at `/company-ai`. It calls Slate through a server-side proxy:
+The employee-facing demo runs as a separate Next.js application:
 
 ```text
-/company-ai UI → POST /api/company-ai/run → Slate gateway → LiteLLM
+Mock Company AI :3100 → HTTPS → Slate /api/v1 :3000 → LiteLLM :4000
 ```
 
-Configure a local server-side key (never expose this to the browser):
+Its key is configured only in `mock-company-ai/.env.local`:
 
 ```bash
-npm run source-app:key:create -- --source-app-name "Mock Company AI Portal"
-# add to local .env:
-# MOCK_COMPANY_SOURCE_APP_KEY="slate_app_sk_..."
+SLATE_BASE_URL=http://localhost:3000
+SLATE_SOURCE_APP_KEY=slate_app_sk_...
 ```
 
-Run a tiny real integration check (uses LiteLLM; keep spend minimal):
+With both apps running, execute the black-box integration check:
 
 ```bash
-npm run company-ai:integration:test
+npm run two-app:integration:test
 ```
 
 ## Docker services
@@ -380,12 +398,11 @@ provider response JSON.
 await enqueueJob("slack.ai_request", payload);
 ```
 
-The current implementation is an **in-process, local-development-only**
-dispatcher built on `setImmediate`. It is not durable: jobs are lost if the
-process crashes or restarts, and it does not work across serverless
-invocations. It exists so route handlers stay thin (Slack requires a 2xx
-acknowledgment within ~3 seconds) and will be replaced by a durable queue
-(Inngest, Trigger.dev, BullMQ, SQS, or a dedicated worker) before production.
+The default adapter persists jobs in PostgreSQL and processes them in the
+separate `npm run worker` process. It uses idempotency keys, row locking,
+bounded retries, and durable status tracking so Slack routes can acknowledge
+quickly without doing model work inline. `QUEUE_ADAPTER=in-memory` remains
+available only for isolated local tests and is intentionally non-durable.
 
 Local signed Slack event testing (no ngrok, no real Slack API):
 
@@ -510,7 +527,6 @@ template and copy values into local `.env`.
 
 - Authentication and session management
 - Slack OAuth install and workspace sync (manual `/slack` mapping + seed data only)
-- Durable background job execution (current queue is in-process, dev-only)
 - Dashboard spend cards and LiteLLM spend reconciliation (`lib/analytics/spend.ts`)
 - Client/project select menu completion in Slack assignment Block Kit
 

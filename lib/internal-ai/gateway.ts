@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createAiAttributionDecision } from "@/lib/attribution/decisions";
+import { createConsentedTrainingExample } from "@/lib/attribution/training";
 import {
   createAiUsageEvent,
   createProcessingAiRequestAudit,
@@ -17,11 +19,13 @@ import {
   type InternalAiGatewaySuccessResponse,
   validateInternalAiGatewayBody,
 } from "./gatewayTypes";
+import { resolveGatewayAttributionIds } from "./externalAttribution";
 import {
   authenticateSourceAppRequest,
   parseBearerToken,
   type SourceAppAuthErrorCode,
 } from "./sourceAppAuth";
+import { hasSourceAppScope } from "./sourceAppScopes";
 import { validateInternalAiAttribution } from "./usageAttribution";
 
 const MAX_ERROR_MESSAGE_LENGTH = 1000;
@@ -86,6 +90,15 @@ function sanitizeErrorMessage(error: unknown): string {
   return "Internal AI gateway request failed".slice(0, MAX_ERROR_MESSAGE_LENGTH);
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002",
+  );
+}
+
 /**
  * Synchronous internal AI gateway for company-native tools.
  * Unlike Slack events, this path returns the model response directly to the caller.
@@ -106,6 +119,14 @@ export async function processInternalAiGatewayRequest(input: {
     return fail(authErrorStatus(auth.error.code), auth.error.code, auth.error.message);
   }
 
+  if (!hasSourceAppScope(auth.value.scopes, "ai:run")) {
+    return fail(
+      403,
+      "INSUFFICIENT_SCOPE",
+      "API credential requires the ai:run scope.",
+    );
+  }
+
   const validatedBody = validateInternalAiGatewayBody(input.body);
 
   if (!validatedBody.ok) {
@@ -114,13 +135,26 @@ export async function processInternalAiGatewayRequest(input: {
 
   const body = validatedBody.value;
 
+  const resolvedAttribution = await resolveGatewayAttributionIds({
+    organizationId: auth.value.organizationId,
+    body,
+  });
+
+  if (!resolvedAttribution.ok) {
+    return fail(
+      400,
+      resolvedAttribution.error.code,
+      resolvedAttribution.error.message,
+    );
+  }
+
   const attribution = await validateInternalAiAttribution({
     organizationId: auth.value.organizationId,
-    employeeId: body.employeeId ?? null,
+    employeeId: resolvedAttribution.value.employeeId,
     sourceAppId: auth.value.sourceAppId,
-    clientId: body.clientId ?? null,
-    projectId: body.projectId ?? null,
-    workflowTypeId: body.workflowTypeId ?? null,
+    clientId: resolvedAttribution.value.clientId,
+    projectId: resolvedAttribution.value.projectId,
+    workflowTypeId: resolvedAttribution.value.workflowTypeId,
     taskType: body.taskType ?? null,
   });
 
@@ -144,17 +178,30 @@ export async function processInternalAiGatewayRequest(input: {
     }
   }
 
-  const audit = await createProcessingAiRequestAudit({
-    organizationId: auth.value.organizationId,
-    source: "WEB",
-    employeeId: attribution.value.employeeId,
-    sourceAppId: auth.value.sourceAppId,
-    clientId: attribution.value.clientId,
-    projectId: attribution.value.projectId,
-    workflowTypeId: attribution.value.workflowTypeId,
-    taskType: attribution.value.taskType,
-    sourceAppRequestId: body.sourceAppRequestId ?? null,
-  });
+  let audit: { id: string };
+
+  try {
+    audit = await createProcessingAiRequestAudit({
+      organizationId: auth.value.organizationId,
+      source: "WEB",
+      employeeId: attribution.value.employeeId,
+      sourceAppId: auth.value.sourceAppId,
+      clientId: attribution.value.clientId,
+      projectId: attribution.value.projectId,
+      workflowTypeId: attribution.value.workflowTypeId,
+      taskType: attribution.value.taskType,
+      sourceAppRequestId: body.sourceAppRequestId ?? null,
+    });
+  } catch (error) {
+    if (body.sourceAppRequestId && isUniqueConstraintError(error)) {
+      return fail(
+        409,
+        "DUPLICATE_SOURCE_APP_REQUEST",
+        "Request with this sourceAppRequestId was already processed or is in progress.",
+      );
+    }
+    throw error;
+  }
 
   const startedAt = Date.now();
 
@@ -219,6 +266,44 @@ export async function processInternalAiGatewayRequest(input: {
       taskType: attribution.value.taskType,
     });
 
+    if (attribution.value.workflowTypeId && attribution.value.taskType) {
+      let predictedWorkflowTypeId: string | null = null;
+      const predictedWorkflowExternalId =
+        body.attributionPrediction?.predictedWorkflowExternalId ?? null;
+      if (predictedWorkflowExternalId) {
+        const predictedWorkflow = await db.workflowType.findFirst({
+          where: {
+            organizationId: auth.value.organizationId,
+            externalId: predictedWorkflowExternalId,
+          },
+          select: { id: true },
+        });
+        predictedWorkflowTypeId = predictedWorkflow?.id ?? null;
+      }
+
+      await createAiAttributionDecision({
+        organizationId: auth.value.organizationId,
+        aiRequestAuditId: audit.id,
+        sourceAppId: auth.value.sourceAppId,
+        employeeId: attribution.value.employeeId,
+        finalWorkflowTypeId: attribution.value.workflowTypeId,
+        finalTaskType: attribution.value.taskType,
+        ...(body.attributionPrediction
+          ? { prediction: body.attributionPrediction }
+          : {}),
+        predictedWorkflowTypeId,
+      });
+
+      if (body.consentToAttributionTraining) {
+        await createConsentedTrainingExample({
+          organizationId: auth.value.organizationId,
+          text: body.input,
+          finalWorkflowTypeId: attribution.value.workflowTypeId,
+          finalTaskType: attribution.value.taskType,
+        });
+      }
+    }
+
     logger.info(
       {
         aiRequestAuditId: audit.id,
@@ -248,6 +333,7 @@ export async function processInternalAiGatewayRequest(input: {
           promptTokens: resolvedCompletion.usage.inputTokens,
           completionTokens: resolvedCompletion.usage.outputTokens,
           totalTokens: resolvedCompletion.usage.totalTokens,
+          costMicros: Number(totalCostMicros),
           spendUsd: microsToUsdDecimal(totalCostMicros).toNumber(),
           externalLiteLlmRequestId:
             resolvedCompletion.externalLiteLlmRequestId ?? null,

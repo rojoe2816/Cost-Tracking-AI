@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { logger } from "@/lib/logger";
+import { recordWorkerHeartbeat } from "@/lib/public-api/health";
 import {
   claimNextPostgresJob,
   processClaimedPostgresJob,
@@ -12,6 +13,7 @@ export type WorkerLoopOptions = {
   workerId?: string;
   pollIntervalMs?: number;
   maxJobsPerTick?: number;
+  signal?: AbortSignal;
 };
 
 export async function runWorkerOnce(
@@ -39,26 +41,43 @@ export async function runWorkerOnce(
 
 export async function runWorkerLoop(
   options: WorkerLoopOptions = {},
-): Promise<never> {
+): Promise<void> {
   const workerId = options.workerId ?? `worker-${randomUUID()}`;
   const pollIntervalMs = options.pollIntervalMs ?? 1000;
   const maxJobsPerTick = options.maxJobsPerTick ?? 5;
 
   logger.info({ workerId, pollIntervalMs }, "Starting durable background worker");
 
-  while (true) {
-    let processed = 0;
+  while (!options.signal?.aborted) {
+    try {
+      let processed = 0;
 
-    for (let index = 0; index < maxJobsPerTick; index += 1) {
-      const count = await runWorkerOnce(workerId);
-      processed += count;
+      for (let index = 0; index < maxJobsPerTick; index += 1) {
+        const count = await runWorkerOnce(workerId);
+        processed += count;
 
-      if (count === 0) {
-        break;
+        if (count === 0) {
+          break;
+        }
       }
-    }
 
-    if (processed === 0) {
+      await recordWorkerHeartbeat(workerId);
+
+      if (processed === 0) {
+        await sleep(pollIntervalMs);
+      }
+    } catch (error) {
+      logger.error(
+        {
+          workerId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          errorCode:
+            error && typeof error === "object" && "code" in error
+              ? String(error.code)
+              : undefined,
+        },
+        "Background worker poll failed; retrying",
+      );
       await sleep(pollIntervalMs);
     }
   }

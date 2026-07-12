@@ -1,4 +1,4 @@
-export type AuthMode = "disabled";
+export type AuthMode = "signed-session";
 
 export interface AuthStatus {
   enabled: boolean;
