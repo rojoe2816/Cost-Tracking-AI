@@ -41,6 +41,7 @@
   "exclude": [
     "node_modules",
     "mock-company-ai",
-    "packages"
+    "packages",
+    "examples"
   ]
 }

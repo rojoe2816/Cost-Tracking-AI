@@ -37,10 +37,10 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy
+      - run: npm run build:packages
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npm run build:packages
       - name: Secret scan
         run: |
           ! git grep -E 'slate_app_sk_[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|xoxb-[0-9-]{10,}' -- ':!.env.example' ':!mock-company-ai/.env.example' ':!**/*.test.ts' ':!**/holdout_test.jsonl' ':!**/base_training.jsonl' || true
